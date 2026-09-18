@@ -1,1 +1,384 @@
-PLACEHOLDER
+#!/usr/bin/env python3
+"""School Campus Check-In — mobile PWA + expanded features"""
+import csv, hashlib, io, math, sqlite3, secrets
+from datetime import datetime, date, time as dtime
+from functools import wraps
+from pathlib import Path
+from flask import Flask, request, session, redirect, url_for, render_template_string, g, Response, jsonify
+
+app = Flask(__name__, static_folder="static")
+app.secret_key = secrets.token_hex(32)
+DB_PATH = Path(__file__).parent / "campus.db"
+DEFAULTS = {"school_name": "Demo High School", "school_lat": "40.7128", "school_lng": "-74.0060",
+            "school_radius_m": "150", "school_start": "08:00", "school_end": "15:30", "late_after": "08:15"}
+
+def get_db():
+    if "db" not in g:
+        g.db = sqlite3.connect(DB_PATH); g.db.row_factory = sqlite3.Row
+    return g.db
+
+@app.teardown_appcontext
+def close_db(e=None):
+    db = g.pop("db", None)
+    if db: db.close()
+
+def hash_pin(pin): return hashlib.sha256(pin.encode()).hexdigest()
+
+def init_db():
+    db = sqlite3.connect(DB_PATH)
+    db.executescript('''CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, pin_hash TEXT NOT NULL,
+        role TEXT NOT NULL, active INTEGER DEFAULT 1, created_at TEXT);
+    CREATE TABLE IF NOT EXISTS events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
+        event_type TEXT NOT NULL, lat REAL, lng REAL, accuracy_m REAL,
+        inside_geofence INTEGER, is_late INTEGER DEFAULT 0, note TEXT, created_at TEXT);
+    CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);''')
+    try: db.execute("SELECT is_late FROM events LIMIT 1")
+    except sqlite3.OperationalError: db.execute("ALTER TABLE events ADD COLUMN is_late INTEGER DEFAULT 0")
+    for k,v in DEFAULTS.items():
+        db.execute("INSERT OR IGNORE INTO settings (key,value) VALUES (?,?)", (k,v))
+    if db.execute("SELECT COUNT(*) FROM users").fetchone()[0]==0:
+        now = datetime.now().isoformat(timespec="seconds")
+        for name,pin,role in [("Admin","0000","admin"),("Ms. Rivera","1234","teacher"),
+                              ("Alex Student","1111","student"),("Sam Staff","2222","staff")]:
+            db.execute("INSERT INTO users (name,pin_hash,role,created_at) VALUES (?,?,?,?)",
+                       (name, hash_pin(pin), role, now))
+    db.commit(); db.close()
+
+def get_setting(key, default=""):
+    row = get_db().execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else default
+
+def set_setting(key, value):
+    get_db().execute("INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)", (key, str(value)))
+    get_db().commit()
+
+def haversine_m(lat1,lng1,lat2,lng2):
+    R=6371000.0; p1,p2=math.radians(lat1),math.radians(lat2)
+    dp,dl=math.radians(lat2-lat1),math.radians(lng2-lng1)
+    a=math.sin(dp/2)**2+math.cos(p1)*math.cos(p2)*math.sin(dl/2)**2
+    return 2*R*math.asin(math.sqrt(a))
+
+def current_status(uid):
+    row=get_db().execute("SELECT event_type FROM events WHERE user_id=? ORDER BY id DESC LIMIT 1",(uid,)).fetchone()
+    return row["event_type"] if row else "out"
+
+def last_event(uid):
+    return get_db().execute("SELECT * FROM events WHERE user_id=? ORDER BY id DESC LIMIT 1",(uid,)).fetchone()
+
+def is_late_now():
+    try:
+        h,m=map(int, get_setting("late_after","08:15").split(":"))
+        return datetime.now().time()>dtime(h,m)
+    except Exception: return False
+
+def login_required(f):
+    @wraps(f)
+    def w(*a,**k):
+        if "user_id" not in session: return redirect(url_for("login"))
+        return f(*a,**k)
+    return w
+
+def staff_required(f):
+    @wraps(f)
+    def w(*a,**k):
+        if session.get("role") not in ("admin","teacher"): return "Staff only",403
+        return f(*a,**k)
+    return w
+
+def admin_required(f):
+    @wraps(f)
+    def w(*a,**k):
+        if session.get("role")!="admin": return "Admin only",403
+        return f(*a,**k)
+    return w
+
+BASE='''<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f172a">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="icon" href="/static/icon.svg">
+<title>{{ title }} · Campus</title>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;--safe:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;padding-bottom:calc(72px + var(--safe))}
+header{position:sticky;top:0;z-index:20;background:rgba(30,41,59,.95);padding:.75rem 1rem;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center}
+.brand{font-weight:700}.wrap{max-width:560px;margin:0 auto;padding:1rem}
+.card{background:var(--card);border-radius:16px;padding:1.15rem;margin-bottom:.9rem;border:1px solid #334155}
+h1{font-size:1.35rem;margin-bottom:.35rem}h2{font-size:1.05rem;margin-bottom:.7rem;color:var(--accent)}
+.muted{color:var(--muted);font-size:.88rem}label{display:block;margin:.55rem 0 .25rem;font-size:.82rem;color:var(--muted)}
+input,select,textarea{width:100%;padding:.85rem .9rem;border-radius:12px;border:1px solid #334155;background:#0f172a;color:var(--text);font-size:16px}
+textarea{min-height:70px}button,.btn{display:inline-flex;align-items:center;justify-content:center;padding:1rem 1.2rem;border:none;border-radius:14px;font-weight:700;font-size:1.05rem;cursor:pointer;text-decoration:none;color:#0f172a;width:100%;margin-top:.65rem;min-height:52px}
+.btn-in{background:var(--ok)}.btn-out{background:var(--warn)}.btn-primary{background:var(--accent)}.btn-danger{background:var(--bad);color:#fff}.btn-ghost{background:transparent;border:1px solid #334155;color:var(--text)}.btn:disabled{opacity:.45}
+.status-in{color:var(--ok);font-weight:800;font-size:1.25rem}.status-out{color:var(--muted);font-weight:800;font-size:1.25rem}.status-late{color:var(--bad);font-weight:700}
+table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:.55rem .3rem;text-align:left;border-bottom:1px solid #334155}th{color:var(--muted)}
+.pill{display:inline-block;padding:.2rem .55rem;border-radius:999px;font-size:.72rem;font-weight:700}
+.pill-in{background:#14532d;color:#86efac}.pill-out{background:#44403c;color:#d6d3d1}.pill-late{background:#7f1d1d;color:#fecaca}
+.error{background:#450a0a;color:#fecaca;padding:.85rem;border-radius:12px;margin-bottom:.9rem}
+.okmsg{background:#14532d;color:#bbf7d0;padding:.85rem;border-radius:12px;margin-bottom:.9rem}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}.stat{text-align:center;padding:.75rem;background:#0f172a;border-radius:12px}.stat-n{font-size:1.6rem;font-weight:800;color:var(--accent)}
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;z-index:30;background:rgba(30,41,59,.97);border-top:1px solid #334155;display:flex;justify-content:space-around;padding:.4rem .5rem calc(.4rem + var(--safe))}
+.bottom-nav a{flex:1;text-align:center;text-decoration:none;color:var(--muted);font-size:.7rem;padding:.35rem;font-weight:600}
+.bottom-nav a.active{color:var(--accent)}.bottom-nav .ico{font-size:1.25rem;display:block}
+.loc-bar{display:flex;align-items:center;gap:.5rem;padding:.6rem .75rem;background:#0f172a;border-radius:10px;margin:.5rem 0;font-size:.85rem}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}.dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}.dot.err{background:var(--bad)}
+@media(min-width:700px){body{padding-bottom:1rem}.bottom-nav{display:none}header nav{display:flex}header nav a{color:var(--accent);text-decoration:none;margin-left:.75rem;font-size:.88rem}}
+@media(max-width:699px){header nav{display:none}.grid2{grid-template-columns:1fr}}
+</style></head><body>
+<header><div class="brand">{{ school_name }}</div>
+<nav>{% if user %}<a href="{{ url_for('dashboard') }}">Home</a><a href="{{ url_for('history') }}">History</a>
+{% if user.role in ['admin','teacher'] %}<a href="{{ url_for('campus_board') }}">Campus</a><a href="{{ url_for('report') }}">Report</a>{% endif %}
+{% if user.role=='admin' %}<a href="{{ url_for('admin') }}">Admin</a>{% endif %}
+<a href="{{ url_for('logout') }}">Logout</a>{% endif %}</nav></header>
+<div class="wrap">{% if error %}<div class="error">{{ error }}</div>{% endif %}{% if msg %}<div class="okmsg">{{ msg }}</div>{% endif %}{{ body|safe }}</div>
+{% if user %}<nav class="bottom-nav">
+<a href="{{ url_for('dashboard') }}" class="{{ 'active' if title=='Home' else '' }}"><span class="ico">🏠</span>Home</a>
+<a href="{{ url_for('history') }}" class="{{ 'active' if title=='History' else '' }}"><span class="ico">📋</span>History</a>
+{% if user.role in ['admin','teacher'] %}
+<a href="{{ url_for('campus_board') }}"><span class="ico">👥</span>Campus</a>
+<a href="{{ url_for('report') }}"><span class="ico">📊</span>Report</a>
+{% endif %}
+{% if user.role=='admin' %}<a href="{{ url_for('admin') }}"><span class="ico">⚙️</span>Admin</a>
+{% else %}<a href="{{ url_for('logout') }}"><span class="ico">🚪</span>Out</a>{% endif %}
+</nav>{% endif %}
+<script>if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});</script>
+</body></html>'''
+
+def page(title, body, error=None, msg=None):
+    user=None
+    if "user_id" in session:
+        user=get_db().execute("SELECT * FROM users WHERE id=?",(session["user_id"],)).fetchone()
+    return render_template_string(BASE, title=title, body=body, error=error, msg=msg, user=user,
+                                  school_name=get_setting("school_name","School"))
+
+@app.route("/sw.js")
+def sw():
+    return Response("self.addEventListener('install',e=>self.skipWaiting());", mimetype="application/javascript")
+
+@app.route("/")
+def index():
+    return redirect(url_for("dashboard" if "user_id" in session else "login"))
+
+@app.route("/login", methods=["GET","POST"])
+def login():
+    form='''<div class="card" style="margin-top:1.5rem"><h1>Campus Login</h1>
+    <p class="muted">Works on phone · Add to Home Screen</p>
+    <form method="post"><label>Name</label><input name="name" required autofocus>
+    <label>PIN</label><input name="pin" type="password" required inputmode="numeric">
+    <button class="btn btn-primary" type="submit">Login</button></form>
+    <p class="muted" style="margin-top:1rem;font-size:.78rem">Demo: Admin/0000 · Ms. Rivera/1234 · Alex Student/1111 · Sam Staff/2222</p></div>'''
+    if request.method=="POST":
+        name=request.form.get("name","").strip(); pin=request.form.get("pin","").strip()
+        row=get_db().execute("SELECT * FROM users WHERE name=? AND active=1",(name,)).fetchone()
+        if row and row["pin_hash"]==hash_pin(pin):
+            session.update(user_id=row["id"], role=row["role"], name=row["name"])
+            return redirect(url_for("dashboard"))
+        return page("Login", form, error="Wrong name or PIN")
+    return page("Login", form)
+
+@app.route("/logout")
+def logout():
+    session.clear(); return redirect(url_for("login"))
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    uid=session["user_id"]; status=current_status(uid); le=last_event(uid)
+    last_line=""
+    if le:
+        last_line=f"<p class='muted'>Last: <strong>{le['event_type'].upper()}</strong> at {le['created_at'][11:16]}"
+        if le["is_late"]: last_line+=" · <span class='status-late'>LATE</span>"
+        last_line+="</p>"
+    body=f'''<div class="card"><h1>Hi, {session.get("name")}</h1>
+    <p class="muted">{session.get("role")} · {get_setting("school_name")}</p>
+    <p style="margin-top:.85rem">Status: {'<span class="status-in">ON CAMPUS</span>' if status=='in' else '<span class="status-out">OFF CAMPUS</span>'}</p>
+    {last_line}
+    <p class="muted">Hours {get_setting("school_start")}–{get_setting("school_end")} · Late after {get_setting("late_after")}</p></div>
+    <div class="card"><h2>Check In / Out</h2>
+    <div class="loc-bar"><span class="dot" id="dot"></span><span id="loc-status">Getting GPS…</span></div>
+    <label>Note (optional)</label><textarea id="note" placeholder="e.g. left early, appointment…"></textarea>
+    <button class="btn btn-in" id="btn-in" onclick="doCheck('in')" disabled>✅ CHECK IN — Enter</button>
+    <button class="btn btn-out" id="btn-out" onclick="doCheck('out')" disabled>🚪 CHECK OUT — Leave</button>
+    <button class="btn btn-ghost" type="button" onclick="refreshLoc()">↻ Refresh GPS</button>
+    <p id="result" style="margin-top:.85rem"></p></div>
+    <script>
+    let lat=null,lng=null,accuracy=null;
+    function setReady(ok,msg){{document.getElementById('dot').className='dot '+(ok?'on':'err');
+      document.getElementById('loc-status').textContent=msg;
+      document.getElementById('btn-in').disabled=!ok;document.getElementById('btn-out').disabled=!ok;}}
+    function onPos(pos){{lat=pos.coords.latitude;lng=pos.coords.longitude;accuracy=pos.coords.accuracy;
+      setReady(true,'GPS ready · ±'+Math.round(accuracy)+' m');}}
+    function onErr(err){{setReady(false,'GPS: '+err.message);}}
+    function refreshLoc(){{setReady(false,'Refreshing…');
+      navigator.geolocation.getCurrentPosition(onPos,onErr,{{enableHighAccuracy:true,timeout:20000,maximumAge:0}});}}
+    if(!navigator.geolocation)setReady(false,'No GPS');
+    else{{refreshLoc();navigator.geolocation.watchPosition(onPos,onErr,{{enableHighAccuracy:true,maximumAge:5000}});}}
+    async function doCheck(type){{
+      document.getElementById('btn-in').disabled=true;document.getElementById('btn-out').disabled=true;
+      const res=await fetch('/api/check',{{method:'POST',headers:{{'Content-Type':'application/json'}},
+        body:JSON.stringify({{type,lat,lng,accuracy,note:document.getElementById('note').value}})}});
+      const data=await res.json();
+      document.getElementById('result').innerHTML=data.ok?'<span style="color:#86efac">'+data.message+'</span>':'<span style="color:#fca5a5">'+data.message+'</span>';
+      if(data.ok)setTimeout(()=>location.reload(),1100);
+      else{{document.getElementById('btn-in').disabled=false;document.getElementById('btn-out').disabled=false;}}
+    }}
+    </script>'''
+    return page("Home", body)
+
+@app.route("/api/check", methods=["POST"])
+@login_required
+def api_check():
+    data=request.get_json(force=True,silent=True) or {}
+    etype=data.get("type")
+    if etype not in ("in","out"): return jsonify(ok=False,message="Invalid"),400
+    try:
+        lat,lng,accuracy=float(data["lat"]),float(data["lng"]),float(data.get("accuracy") or 0)
+    except (TypeError,ValueError,KeyError):
+        return jsonify(ok=False,message="Allow GPS location"),400
+    note=(data.get("note") or "")[:300]
+    dist=haversine_m(lat,lng,float(get_setting("school_lat")),float(get_setting("school_lng")))
+    radius=float(get_setting("school_radius_m"))
+    inside=dist<=radius+max(accuracy,0)
+    if etype=="in" and not inside:
+        return jsonify(ok=False,message=f"Too far ({int(dist)} m). Need ≤ {int(radius)} m.")
+    st=current_status(session["user_id"])
+    if etype=="in" and st=="in": return jsonify(ok=False,message="Already checked in.")
+    if etype=="out" and st=="out": return jsonify(ok=False,message="Already checked out.")
+    late=1 if (etype=="in" and is_late_now()) else 0
+    now=datetime.now().isoformat(timespec="seconds")
+    get_db().execute("INSERT INTO events (user_id,event_type,lat,lng,accuracy_m,inside_geofence,is_late,note,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                     (session["user_id"],etype,lat,lng,accuracy,1 if inside else 0,late,note,now))
+    get_db().commit()
+    if etype=="in":
+        msg=f"Checked IN at {now[11:16]}." + (" Marked LATE." if late else " Welcome!")
+    else:
+        msg=f"Checked OUT at {now[11:16]}. Have a good day!"
+    return jsonify(ok=True,message=msg,late=bool(late))
+
+@app.route("/history")
+@login_required
+def history():
+    role,uid=session.get("role"),session["user_id"]
+    if role in ("admin","teacher"):
+        rows=get_db().execute("SELECT e.*,u.name FROM events e JOIN users u ON u.id=e.user_id ORDER BY e.id DESC LIMIT 120").fetchall()
+    else:
+        rows=get_db().execute("SELECT e.*,u.name FROM events e JOIN users u ON u.id=e.user_id WHERE e.user_id=? ORDER BY e.id DESC LIMIT 60",(uid,)).fetchall()
+    rows_html=""
+    for r in rows:
+        pill="pill-in" if r["event_type"]=="in" else "pill-out"
+        late=' <span class="pill pill-late">LATE</span>' if r["is_late"] else ""
+        note=f"<div class='muted'>{r['note']}</div>" if r["note"] else ""
+        rows_html+=f"<tr><td>{r['created_at'][5:16]}</td><td>{r['name']}{note}</td><td><span class=\"pill {pill}\">{r['event_type'].upper()}</span>{late}</td></tr>"
+    return page("History", f'<div class="card"><h2>History</h2><table><tr><th>When</th><th>Who</th><th>Event</th></tr>{rows_html or "<tr><td colspan=3>None</td></tr>"}</table></div>')
+
+@app.route("/campus")
+@login_required
+@staff_required
+def campus_board():
+    users=get_db().execute("SELECT id,name,role FROM users WHERE active=1 ORDER BY name").fetchall()
+    on_c,off_c=[],[]
+    for u in users:
+        st=current_status(u["id"]); le=last_event(u["id"])
+        item={"name":u["name"],"role":u["role"],"late":bool(le and le["is_late"] and st=="in"),
+              "since":le["created_at"][11:16] if le and st=="in" else ""}
+        (on_c if st=="in" else off_c).append(item)
+    def ul(lst, since=False):
+        if not lst: return "<p class='muted'>None</p>"
+        h="<ul style='list-style:none'>"
+        for x in lst:
+            late=" · <span class='status-late'>LATE</span>" if x["late"] else ""
+            s=f" <span class='muted'>since {x['since']}</span>" if since and x["since"] else ""
+            h+=f"<li style='padding:.35rem 0'>{x['name']} <span class='muted'>({x['role']})</span>{late}{s}</li>"
+        return h+"</ul>"
+    body=f'''<div class="grid2"><div class="stat"><div class="stat-n">{len(on_c)}</div><div class="muted">On campus</div></div>
+    <div class="stat"><div class="stat-n">{len(off_c)}</div><div class="muted">Off campus</div></div></div>
+    <div class="card"><h2>🟢 On campus</h2>{ul(on_c,True)}</div>
+    <div class="card"><h2>⚪ Off campus</h2>{ul(off_c)}</div>
+    <p class="muted" style="text-align:center">Auto-refresh 30s</p><script>setTimeout(()=>location.reload(),30000)</script>'''
+    return page("Who's here", body)
+
+@app.route("/report")
+@login_required
+@staff_required
+def report():
+    today=date.today().isoformat()
+    ins=get_db().execute("SELECT u.name,e.created_at,e.is_late,e.note FROM events e JOIN users u ON u.id=e.user_id WHERE e.event_type='in' AND e.created_at LIKE ? ORDER BY e.created_at",(today+"%",)).fetchall()
+    late_n=sum(1 for r in ins if r["is_late"])
+    rows="".join(f"<tr><td>{r['created_at'][11:16]}</td><td>{r['name']}</td><td>{'<span class=\"pill pill-late\">LATE</span>' if r['is_late'] else ''}</td><td class='muted'>{r['note'] or ''}</td></tr>" for r in ins)
+    body=f'''<div class="grid2"><div class="stat"><div class="stat-n">{len(ins)}</div><div class="muted">Check-ins today</div></div>
+    <div class="stat"><div class="stat-n">{late_n}</div><div class="muted">Late today</div></div></div>
+    <div class="card"><h2>Today ({today})</h2><table><tr><th>Time</th><th>Name</th><th></th><th>Note</th></tr>{rows or '<tr><td colspan=4>None yet</td></tr>'}</table></div>'''
+    return page("Report", body)
+
+@app.route("/admin", methods=["GET","POST"])
+@login_required
+@admin_required
+def admin():
+    db=get_db()
+    if request.method=="POST":
+        action=request.form.get("action")
+        if action=="settings":
+            for k in ("school_name","school_lat","school_lng","school_radius_m","school_start","school_end","late_after"):
+                if request.form.get(k) is not None: set_setting(k, request.form.get(k))
+            return page("Admin", admin_body(), msg="Saved")
+        if action=="add_user":
+            name,pin,role=request.form.get("name","").strip(),request.form.get("pin","").strip(),request.form.get("role","student")
+            if name and pin and role in ("admin","teacher","student","staff"):
+                db.execute("INSERT INTO users (name,pin_hash,role,created_at) VALUES (?,?,?,?)",(name,hash_pin(pin),role,datetime.now().isoformat(timespec="seconds")))
+                db.commit(); return page("Admin", admin_body(), msg=f"Added {name}")
+        if action=="deactivate":
+            db.execute("UPDATE users SET active=0 WHERE id=?",(request.form.get("user_id"),)); db.commit()
+            return page("Admin", admin_body(), msg="Disabled")
+        if action=="force_out":
+            now=datetime.now().isoformat(timespec="seconds"); n=0
+            for u in db.execute("SELECT id FROM users WHERE active=1").fetchall():
+                if current_status(u["id"])=="in":
+                    db.execute("INSERT INTO events (user_id,event_type,inside_geofence,note,created_at) VALUES (?,?,?,?,?)",(u["id"],"out",1,"End-of-day force checkout",now)); n+=1
+            db.commit(); return page("Admin", admin_body(), msg=f"Checked out {n} people")
+    return page("Admin", admin_body())
+
+def admin_body():
+    users=get_db().execute("SELECT * FROM users ORDER BY role,name").fetchall()
+    urows="".join(f'''<tr><td>{u["name"]}</td><td>{u["role"]}</td><td>{"yes" if u["active"] else "no"}</td>
+    <td><form method="post" style="display:inline"><input type="hidden" name="action" value="deactivate">
+    <input type="hidden" name="user_id" value="{u["id"]}">
+    <button class="btn btn-danger" style="min-height:36px;padding:.35rem .6rem;font-size:.8rem;width:auto;margin:0" type="submit">Disable</button></form></td></tr>''' for u in users)
+    return f'''<div class="card"><h2>School & hours</h2><form method="post"><input type="hidden" name="action" value="settings">
+    <label>Name</label><input name="school_name" value="{get_setting("school_name")}">
+    <div class="grid2"><div><label>Lat</label><input name="school_lat" value="{get_setting("school_lat")}"></div>
+    <div><label>Lng</label><input name="school_lng" value="{get_setting("school_lng")}"></div></div>
+    <label>Radius (m)</label><input name="school_radius_m" value="{get_setting("school_radius_m")}">
+    <div class="grid2"><div><label>Start</label><input name="school_start" value="{get_setting("school_start")}"></div>
+    <div><label>End</label><input name="school_end" value="{get_setting("school_end")}"></div></div>
+    <label>Late after</label><input name="late_after" value="{get_setting("late_after")}">
+    <button class="btn btn-primary" type="submit">Save</button></form></div>
+    <div class="card"><h2>Add user</h2><form method="post"><input type="hidden" name="action" value="add_user">
+    <label>Name</label><input name="name" required><label>PIN</label><input name="pin" required inputmode="numeric">
+    <label>Role</label><select name="role"><option>student</option><option>teacher</option><option>staff</option><option>admin</option></select>
+    <button class="btn btn-primary" type="submit">Add</button></form></div>
+    <div class="card"><h2>Users</h2><table><tr><th>Name</th><th>Role</th><th>Active</th><th></th></tr>{urows}</table></div>
+    <div class="card"><h2>Actions</h2>
+    <form method="post" onsubmit="return confirm('Check out everyone still on campus?')"><input type="hidden" name="action" value="force_out">
+    <button class="btn btn-out" type="submit">Force checkout all</button></form>
+    <a class="btn btn-primary" href="{url_for("export_csv")}">Export CSV</a></div>'''
+
+@app.route("/export.csv")
+@login_required
+@admin_required
+def export_csv():
+    rows=get_db().execute("SELECT e.created_at,u.name,u.role,e.event_type,e.is_late,e.note,e.lat,e.lng FROM events e JOIN users u ON u.id=e.user_id ORDER BY e.id").fetchall()
+    buf=io.StringIO(); w=csv.writer(buf)
+    w.writerow(["time","name","role","event","late","note","lat","lng"])
+    for r in rows: w.writerow([r["created_at"],r["name"],r["role"],r["event_type"],r["is_late"],r["note"],r["lat"],r["lng"]])
+    return Response(buf.getvalue(), mimetype="text/csv", headers={"Content-Disposition":"attachment; filename=campus_events.csv"})
+
+if __name__=="__main__":
+    init_db()
+    print("Campus Check-In (phone-ready) → http://localhost:5050")
+    print("On phone: http://YOUR-LAN-IP:5050 → Add to Home Screen")
+    print("Demo: Admin/0000 · Ms. Rivera/1234 · Alex Student/1111")
+    app.run(host="0.0.0.0", port=5050, debug=True)
