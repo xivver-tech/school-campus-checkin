@@ -1,35 +1,34 @@
-# School Campus Check-In System
+# School Campus Check-In (Phone-ready)
 
-A **full web app** for tracking who enters and leaves a school campus.
+Full school entry/exit system — optimized for **phones** as a installable web app.
 
-## Concept
-- Students / teachers / staff log in with a **name + PIN**
-- Big **CHECK IN** button when arriving
-- Big **CHECK OUT** button when leaving
-- Phone **GPS** is compared to the school location (geofence)
-- Must be near the school to check **in**
-- Teachers/admin see **who is on campus right now**
-- Full history + CSV export
+## Phone setup
+1. Run the server on a computer on the same Wi‑Fi:
+   ```bash
+   pip install -r requirements.txt
+   python app.py
+   ```
+2. On your phone open `http://YOUR-COMPUTER-IP:5050`
+3. Browser menu → **Add to Home Screen** (PWA)
+4. Allow **location** when checking in
 
-## Features
-| Feature | |
-|--------|--|
-| Roles | admin, teacher, student, staff |
-| Geofence | lat/lng + radius (meters) |
-| Check-in / out | One-tap buttons |
-| Live board | Who’s on campus |
-| History | Personal or all (staff) |
-| Admin | Add users, set school location, export CSV |
-| Storage | SQLite (`campus.db`) |
+GPS needs localhost or HTTPS in most browsers. On a local network, many phones still allow GPS for local IPs.
 
-## Run
-```bash
-pip install -r requirements.txt
-python app.py
-```
-Open **http://localhost:5050**
+## New / expanded features
+| Feature | Details |
+|--------|--------|
+| **Mobile UI** | Large buttons, bottom nav, safe-area padding |
+| **PWA** | Manifest + icon + “Add to Home Screen” |
+| **Live GPS** | Continuous watch + refresh button |
+| **Notes** | Optional note on each check-in/out |
+| **Late detection** | Marks LATE if check-in after configured time |
+| **School hours** | Start / end / late-after in Admin |
+| **Campus board** | Who’s in/out + auto-refresh every 30s |
+| **Daily report** | Today’s check-ins + late count |
+| **Force checkout** | End-of-day mass checkout (admin) |
+| **CSV export** | Full event log |
 
-### Demo logins
+## Demo logins
 | Name | PIN | Role |
 |------|-----|------|
 | Admin | 0000 | admin |
@@ -37,15 +36,12 @@ Open **http://localhost:5050**
 | Alex Student | 1111 | student |
 | Sam Staff | 2222 | staff |
 
-## Setup for a real school
-1. Login as **Admin**
-2. Open **Admin**
-3. Set school name, latitude, longitude, radius (e.g. 150 m)
-4. Add real users with PINs
+## Admin setup for a real school
+1. Login as Admin → **Admin**
+2. Set school name, lat, lng, radius (meters)
+3. Set start / end / late-after times
+4. Add users with PINs
 
-Get coordinates: Google Maps → right-click the school → copy lat/lng.
+Coordinates: Google Maps → right-click school → copy lat,lng.
 
-## How geofence works
-Browser asks for location → app computes distance to school center with the Haversine formula → check-in only allowed if within radius (+ GPS accuracy margin).
-
-Works on phones in the browser (HTTPS or localhost required for GPS in most browsers).
+Repo: https://github.com/xivver-tech/school-campus-checkin
