@@ -1,35 +1,45 @@
 # Rowad Nahda Private — Tiznit · Campus Check-In
 
-FR / AR / EN · phone-ready · GPS geofence
+GPS check-in · FR/AR/EN · **class channels** · multi-role
+
+## Class channels (main new feature)
+- A **teacher** can create many class channels (e.g. 8 classes, 900+ students total).
+- **Students only see channels they are members of** — not the whole school feed.
+- Teacher posts homework / after-hours exercises **only to that class**.
+- Path: **/channels**
+
+### How to use
+1. Login as **Teacher Demo** / `1234`
+2. Open **Class channels** → create e.g. `3A Maths`
+3. Open the channel → **Add student** (Student Demo)
+4. Login as **Student Demo** / `1111` → **Channels** → only sees `3A Maths`
+5. Teacher posts messages; students read them in their class only
+
+## Roles (Admin can assign)
+| Role | Access |
+|------|--------|
+| **student** | Check-in, own class channels |
+| **teacher** | Channels they own, campus tools |
+| **staff** | Campus tools |
+| **busdriver** | Check-in (bus) |
+| **host** | Campus tools |
+| **admin** | Everything |
+| **appdev** | Admin-level |
 
 ## Run
 ```bash
 pip install -r requirements.txt
 python app.py
 ```
-(`app.py` loads `app_full.py` + `extra.py` + `i18n.py`)
 
-## Languages
-Header: **FR** · **AR** · **EN** (Arabic is RTL)
+## Demo accounts
+| Name | PIN | Role |
+|------|-----|------|
+| Admin | 0000 | admin |
+| Teacher Demo | 1234 | teacher |
+| Student Demo | 1111 | student |
+| Staff Demo | 2222 | staff |
+| Bus Demo | 3333 | busdriver |
+| Host Demo | 4444 | host |
 
-## Features
-| Feature | Who | Path |
-|--------|-----|------|
-| GPS Check-in / out | Everyone | Home |
-| Late detection | Auto | — |
-| Who is on campus | Staff | /campus |
-| Daily report | Staff | /report |
-| **Absent today** | Staff | /absent |
-| **Manual pointage** | Staff | /manual |
-| **Week grid** | Staff | /week |
-| **Announcements** | All (post: staff) | /announce |
-| Class groups | Admin | Admin → Add user |
-| Force checkout | Admin | Admin |
-| CSV export | Admin | Admin |
-
-## Demo logins
-Admin/`0000` · Teacher Demo/`1234` · Student Demo/`1111` · Staff Demo/`2222`
-
-## School config (Admin)
-Name, lat/lng (gate), radius, hours 08:00–16:00, late after 08:15  
-GPS default = Tiznit center — change to exact school gate.
+Files: `app.py` → `app_full.py` + `channels.py` + `extra.py` + `i18n.py`
