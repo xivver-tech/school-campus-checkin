@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""School Campus Check-In - Rowad Nahda Private (Tiznit) - FR/AR/EN + extra"""
+"""School Campus Check-In - Rowad Nahda Private (Tiznit) - FR/AR/EN + channels + roles"""
 import csv, hashlib, io, math, sqlite3, secrets
 from datetime import datetime, date, time as dtime
 from functools import wraps
@@ -7,6 +7,7 @@ from pathlib import Path
 from flask import Flask, request, session, redirect, url_for, render_template_string, g, Response, jsonify
 from i18n import I18N
 from extra import register_extra
+from channels import register_channels
 
 app = Flask(__name__, static_folder="static")
 app.secret_key = secrets.token_hex(32)
@@ -22,6 +23,8 @@ DEFAULTS = {
     "late_after": "08:15",
     "default_lang": "fr",
 }
+
+ALL_ROLES = ("student", "teacher", "staff", "busdriver", "admin", "host", "appdev")
 
 def tr(key):
     L = session.get("lang") or "fr"
@@ -58,7 +61,8 @@ def init_db():
     if db.execute("SELECT COUNT(*) FROM users").fetchone()[0]==0:
         now = datetime.now().isoformat(timespec="seconds")
         for name,pin,role in [("Admin","0000","admin"),("Teacher Demo","1234","teacher"),
-            ("Student Demo","1111","student"),("Staff Demo","2222","staff")]:
+            ("Student Demo","1111","student"),("Staff Demo","2222","staff"),
+            ("Bus Demo","3333","busdriver"),("Host Demo","4444","host")]:
             db.execute("INSERT INTO users (name,pin_hash,role,created_at) VALUES (?,?,?,?)",
                        (name, hash_pin(pin), role, now))
     db.commit(); db.close()
@@ -100,14 +104,14 @@ def login_required(f):
 def staff_required(f):
     @wraps(f)
     def w(*a,**k):
-        if session.get("role") not in ("admin","teacher"): return tr("staff_only"),403
+        if session.get("role") not in ("admin","teacher","staff","host","appdev"): return tr("staff_only"),403
         return f(*a,**k)
     return w
 
 def admin_required(f):
     @wraps(f)
     def w(*a,**k):
-        if session.get("role")!="admin": return tr("admin_only"),403
+        if session.get("role") not in ("admin","appdev"): return tr("admin_only"),403
         return f(*a,**k)
     return w
 
@@ -138,11 +142,11 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:.55rem 
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}.stat{text-align:center;padding:.75rem;background:#0f172a;border-radius:12px}.stat-n{font-size:1.6rem;font-weight:800;color:var(--accent)}
 .bottom-nav{position:fixed;bottom:0;left:0;right:0;z-index:30;background:rgba(30,41,59,.97);border-top:1px solid #334155;display:flex;justify-content:space-around;padding:.4rem .5rem calc(.4rem + var(--safe))}
 .bottom-nav a{flex:1;text-align:center;text-decoration:none;color:var(--muted);font-size:.65rem;padding:.3rem;font-weight:600}
-.bottom-nav a.active{color:var(--accent)}.bottom-nav .ico{font-size:1.15rem;display:block}
+.bottom-nav .ico{font-size:1.15rem;display:block}
 .loc-bar{display:flex;align-items:center;gap:.5rem;padding:.6rem;background:#0f172a;border-radius:10px;margin:.5rem 0;font-size:.85rem}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}.dot.on{background:var(--ok)}.dot.err{background:var(--bad)}
 .lang a{color:#94a3b8;text-decoration:none;font-size:.75rem;padding:.2rem .45rem;border:1px solid #334155;border-radius:6px;margin-inline-start:.25rem}
-@media(min-width:700px){body{padding-bottom:1rem}.bottom-nav{display:none}header nav.desk{display:flex}header nav.desk a{color:var(--accent);text-decoration:none;margin-inline-start:.6rem;font-size:.8rem}}
+@media(min-width:700px){body{padding-bottom:1rem}.bottom-nav{display:none}header nav.desk{display:flex;flex-wrap:wrap}header nav.desk a{color:var(--accent);text-decoration:none;margin-inline-start:.5rem;font-size:.78rem}}
 @media(max-width:699px){header nav.desk{display:none}.grid2{grid-template-columns:1fr}}
 </style></head><body>
 <header>
@@ -151,26 +155,21 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:.55rem 
 <nav class="desk">{% if user %}
 <a href="{{ url_for('dashboard') }}">{{ tr.home }}</a>
 <a href="{{ url_for('history') }}">{{ tr.history }}</a>
-{% if user.role in ['admin','teacher'] %}
+<a href="/channels">Channels</a>
+{% if user.role in ['admin','teacher','staff','host','appdev'] %}
 <a href="{{ url_for('campus_board') }}">{{ tr.campus }}</a>
-<a href="{{ url_for('report') }}">{{ tr.report }}</a>
 <a href="/absent">{{ tr.absent }}</a>
-<a href="/manual">{{ tr.manual_check }}</a>
-<a href="/week">{{ tr.week_report }}</a>
 {% endif %}
 <a href="/announce">{{ tr.announcements }}</a>
-{% if user.role=='admin' %}<a href="{{ url_for('admin') }}">{{ tr.admin }}</a>{% endif %}
+{% if user.role in ['admin','appdev'] %}<a href="{{ url_for('admin') }}">{{ tr.admin }}</a>{% endif %}
 <a href="{{ url_for('logout') }}">{{ tr.logout }}</a>{% endif %}</nav>
 </header>
 <div class="wrap">{% if error %}<div class="error">{{ error }}</div>{% endif %}{% if msg %}<div class="okmsg">{{ msg }}</div>{% endif %}{{ body|safe }}</div>
 {% if user %}<nav class="bottom-nav">
 <a href="{{ url_for('dashboard') }}"><span class="ico">🏠</span>{{ tr.home }}</a>
-<a href="{{ url_for('history') }}"><span class="ico">📋</span>{{ tr.history }}</a>
-{% if user.role in ['admin','teacher'] %}
-<a href="{{ url_for('campus_board') }}"><span class="ico">👥</span>{{ tr.campus }}</a>
-<a href="/absent"><span class="ico">❌</span>{{ tr.absent }}</a>
-{% endif %}
+<a href="/channels"><span class="ico">📚</span>Class</a>
 <a href="/announce"><span class="ico">📢</span>{{ tr.announcements }}</a>
+<a href="{{ url_for('history') }}"><span class="ico">📋</span>{{ tr.history }}</a>
 </nav>{% endif %}
 </body></html>'''
 
@@ -205,7 +204,7 @@ def login():
     <form method="post"><label>{tr("name")}</label><input name="name" required autofocus>
     <label>{tr("pin")}</label><input name="pin" type="password" required inputmode="numeric">
     <button class="btn btn-primary" type="submit">{tr("login_btn")}</button></form>
-    <p class="muted" style="margin-top:1rem;font-size:.78rem">Demo: Admin/0000 · Teacher Demo/1234 · Student Demo/1111</p></div>'''
+    <p class="muted" style="margin-top:1rem;font-size:.75rem">Admin/0000 · Teacher/1234 · Student/1111 · Bus/3333 · Host/4444</p></div>'''
     if request.method=="POST":
         name=request.form.get("name","").strip(); pin=request.form.get("pin","").strip()
         row=get_db().execute("SELECT * FROM users WHERE name=? AND active=1",(name,)).fetchone()
@@ -229,26 +228,27 @@ def dashboard():
         if le["is_late"]: last_line+=f" · <span class='status-late'>{tr('late')}</span>"
         last_line+="</p>"
     st = ('<span class="status-in">'+tr("on_campus")+'</span>') if status=='in' else ('<span class="status-out">'+tr("off_campus")+'</span>')
-    extra_links = ""
-    if session.get("role") in ("admin","teacher"):
-        extra_links = f'''<div class="card"><h2>Staff</h2>
-        <a class="btn btn-primary" href="/absent">{tr("absent_today")}</a>
+    role = session.get("role")
+    links = f'''<div class="card"><a class="btn btn-primary" href="/channels">Class channels</a>
+    <a class="btn btn-ghost" href="/announce">{tr("announcements")}</a></div>'''
+    if role in ("admin","teacher","staff","host","appdev"):
+        links = f'''<div class="card"><h2>Tools</h2>
+        <a class="btn btn-primary" href="/channels">Class channels</a>
+        <a class="btn btn-ghost" href="/absent">{tr("absent_today")}</a>
         <a class="btn btn-ghost" href="/manual">{tr("manual_check")}</a>
         <a class="btn btn-ghost" href="/week">{tr("week_report")}</a>
         <a class="btn btn-ghost" href="/announce">{tr("announcements")}</a></div>'''
-    else:
-        extra_links = f'''<div class="card"><a class="btn btn-ghost" href="/announce">{tr("announcements")}</a></div>'''
     body=f'''<div class="card"><h1>{tr("hi")}, {session.get("name")}</h1>
-    <p class="muted">{session.get("role")} · {get_setting("school_name")}</p>
+    <p class="muted">{role} · {get_setting("school_name")}</p>
     <p style="margin-top:.85rem">{tr("status")}: {st}</p>{last_line}
-    <p class="muted">{tr("hours")} {get_setting("school_start")}–{get_setting("school_end")} · {tr("late_after")} {get_setting("late_after")}</p></div>
+    <p class="muted">{tr("hours")} {get_setting("school_start")}–{get_setting("school_end")}</p></div>
     <div class="card"><h2>{tr("check_title")}</h2>
     <div class="loc-bar"><span class="dot" id="dot"></span><span id="loc-status">{tr("gps_wait")}</span></div>
-    <label>{tr("note")}</label><textarea id="note" placeholder="{tr("note_ph")}"></textarea>
+    <label>{tr("note")}</label><textarea id="note"></textarea>
     <button class="btn btn-in" id="btn-in" onclick="doCheck('in')" disabled>{tr("check_in")}</button>
     <button class="btn btn-out" id="btn-out" onclick="doCheck('out')" disabled>{tr("check_out")}</button>
     <button class="btn btn-ghost" type="button" onclick="refreshLoc()">{tr("refresh_gps")}</button>
-    <p id="result" style="margin-top:.85rem"></p></div>{extra_links}
+    <p id="result" style="margin-top:.85rem"></p></div>{links}
     <script>
     let lat=null,lng=null,accuracy=null;
     function setReady(ok,msg){{document.getElementById('dot').className='dot '+(ok?'on':'err');
@@ -288,7 +288,7 @@ def api_check():
     radius=float(get_setting("school_radius_m"))
     inside=dist<=radius+max(accuracy,0)
     if etype=="in" and not inside:
-        return jsonify(ok=False,message=f"{tr('too_far')} ({int(dist)} m). {tr('need')} <= {int(radius)} m.")
+        return jsonify(ok=False,message=f"{tr('too_far')} ({int(dist)} m)")
     st=current_status(session["user_id"])
     if etype=="in" and st=="in": return jsonify(ok=False,message=tr("already_in"))
     if etype=="out" and st=="out": return jsonify(ok=False,message=tr("already_out"))
@@ -298,13 +298,13 @@ def api_check():
                      (session["user_id"],etype,lat,lng,accuracy,1 if inside else 0,late,note,now))
     get_db().commit()
     msg=f"IN {now[11:16]}. "+(tr("marked_late") if late else tr("welcome")) if etype=="in" else f"OUT {now[11:16]}. "+tr("good_day")
-    return jsonify(ok=True,message=msg,late=bool(late))
+    return jsonify(ok=True,message=msg)
 
 @app.route("/history")
 @login_required
 def history():
     role,uid=session.get("role"),session["user_id"]
-    if role in ("admin","teacher"):
+    if role in ("admin","teacher","staff","host","appdev"):
         rows=get_db().execute("SELECT e.*,u.name FROM events e JOIN users u ON u.id=e.user_id ORDER BY e.id DESC LIMIT 120").fetchall()
     else:
         rows=get_db().execute("SELECT e.*,u.name FROM events e JOIN users u ON u.id=e.user_id WHERE e.user_id=? ORDER BY e.id DESC LIMIT 60",(uid,)).fetchall()
@@ -312,8 +312,7 @@ def history():
     for r in rows:
         pill="pill-in" if r["event_type"]=="in" else "pill-out"
         late=f' <span class="pill pill-late">{tr("late")}</span>' if r["is_late"] else ""
-        note=f"<div class='muted'>{r['note']}</div>" if r["note"] else ""
-        rows_html+=f'<tr><td>{r["created_at"][5:16]}</td><td>{r["name"]}{note}</td><td><span class="pill {pill}">{r["event_type"].upper()}</span>{late}</td></tr>'
+        rows_html+=f'<tr><td>{r["created_at"][5:16]}</td><td>{r["name"]}</td><td><span class="pill {pill}">{r["event_type"].upper()}</span>{late}</td></tr>'
     body=f'<div class="card"><h2>{tr("history_title")}</h2><table><tr><th>{tr("when")}</th><th>{tr("who")}</th><th>{tr("event")}</th></tr>{rows_html or "<tr><td colspan=3>"+tr("none")+"</td></tr>"}</table></div>'
     return page(tr("history"), body)
 
@@ -324,37 +323,16 @@ def campus_board():
     users=get_db().execute("SELECT id,name,role FROM users WHERE active=1 ORDER BY name").fetchall()
     on_c,off_c=[],[]
     for u in users:
-        st=current_status(u["id"]); le=last_event(u["id"])
-        item={"name":u["name"],"role":u["role"],"late":bool(le and le["is_late"] and st=="in"),
-              "since":le["created_at"][11:16] if le and st=="in" else ""}
-        (on_c if st=="in" else off_c).append(item)
-    def ul(lst, since=False):
+        st=current_status(u["id"])
+        (on_c if st=="in" else off_c).append(u)
+    def ul(lst):
         if not lst: return "<p class='muted'>"+tr("none")+"</p>"
-        h="<ul style='list-style:none'>"
-        for x in lst:
-            late=(" · <span class='status-late'>"+tr("late")+"</span>") if x["late"] else ""
-            s=(" <span class='muted'>"+x["since"]+"</span>") if since and x["since"] else ""
-            h+=f"<li style='padding:.35rem 0'>{x['name']} <span class='muted'>({x['role']})</span>{late}{s}</li>"
-        return h+"</ul>"
+        return "<ul style='list-style:none'>"+"".join(f"<li>{x['name']} <span class='muted'>({x['role']})</span></li>" for x in lst)+"</ul>"
     body=f'''<div class="grid2"><div class="stat"><div class="stat-n">{len(on_c)}</div><div class="muted">{tr("on_campus_list")}</div></div>
     <div class="stat"><div class="stat-n">{len(off_c)}</div><div class="muted">{tr("off_campus_list")}</div></div></div>
-    <div class="card"><h2>{tr("on_campus_list")}</h2>{ul(on_c,True)}</div>
-    <div class="card"><h2>{tr("off_campus_list")}</h2>{ul(off_c)}</div>
-    <p class="muted" style="text-align:center">{tr("auto_refresh")}</p><script>setTimeout(()=>location.reload(),30000)</script>'''
+    <div class="card"><h2>{tr("on_campus_list")}</h2>{ul(on_c)}</div>
+    <div class="card"><h2>{tr("off_campus_list")}</h2>{ul(off_c)}</div>'''
     return page(tr("campus"), body)
-
-@app.route("/report")
-@login_required
-@staff_required
-def report():
-    today=date.today().isoformat()
-    ins=get_db().execute("SELECT u.name,e.created_at,e.is_late,e.note FROM events e JOIN users u ON u.id=e.user_id WHERE e.event_type='in' AND e.created_at LIKE ? ORDER BY e.created_at",(today+"%",)).fetchall()
-    late_n=sum(1 for r in ins if r["is_late"])
-    rows="".join(f"<tr><td>{r['created_at'][11:16]}</td><td>{r['name']}</td><td>{('<span class=\"pill pill-late\">'+tr('late')+'</span>') if r['is_late'] else ''}</td><td class='muted'>{r['note'] or ''}</td></tr>" for r in ins)
-    body=f'''<div class="grid2"><div class="stat"><div class="stat-n">{len(ins)}</div><div class="muted">{tr("checkins_today")}</div></div>
-    <div class="stat"><div class="stat-n">{late_n}</div><div class="muted">{tr("late_today")}</div></div></div>
-    <div class="card"><h2>{tr("today")} ({today})</h2><table><tr><th>{tr("time")}</th><th>{tr("name")}</th><th></th><th>{tr("note")}</th></tr>{rows or ('<tr><td colspan=4>'+tr("none")+'</td></tr>')}</table></div>'''
-    return page(tr("report"), body)
 
 @app.route("/admin", methods=["GET","POST"])
 @login_required
@@ -370,7 +348,7 @@ def admin():
         if action=="add_user":
             name,pin,role=request.form.get("name","").strip(),request.form.get("pin","").strip(),request.form.get("role","student")
             cg=request.form.get("class_group","").strip()
-            if name and pin and role in ("admin","teacher","student","staff"):
+            if name and pin and role in ALL_ROLES:
                 try:
                     db.execute("INSERT INTO users (name,pin_hash,role,class_group,created_at) VALUES (?,?,?,?,?)",(name,hash_pin(pin),role,cg,datetime.now().isoformat(timespec="seconds")))
                 except Exception:
@@ -392,25 +370,23 @@ def admin_body():
     urows="".join(f'''<tr><td>{u["name"]}</td><td>{u["role"]}</td><td>{"yes" if u["active"] else "no"}</td>
     <td><form method="post" style="display:inline"><input type="hidden" name="action" value="deactivate">
     <input type="hidden" name="user_id" value="{u["id"]}">
-    <button class="btn btn-danger" style="min-height:36px;padding:.35rem .6rem;font-size:.8rem;width:auto;margin:0" type="submit">{tr("disable")}</button></form></td></tr>''' for u in users)
+    <button class="btn btn-danger" style="min-height:36px;padding:.3rem .5rem;font-size:.75rem;width:auto;margin:0" type="submit">{tr("disable")}</button></form></td></tr>''' for u in users)
+    role_opts="".join(f'<option value="{r}">{r}</option>' for r in ALL_ROLES)
     return f'''<div class="card"><h2>{tr("school_hours")}</h2><form method="post"><input type="hidden" name="action" value="settings">
     <label>{tr("name")}</label><input name="school_name" value="{get_setting("school_name")}">
     <div class="grid2"><div><label>{tr("lat")}</label><input name="school_lat" value="{get_setting("school_lat")}"></div>
     <div><label>{tr("lng")}</label><input name="school_lng" value="{get_setting("school_lng")}"></div></div>
     <label>{tr("radius")}</label><input name="school_radius_m" value="{get_setting("school_radius_m")}">
-    <div class="grid2"><div><label>{tr("start")}</label><input name="school_start" value="{get_setting("school_start")}"></div>
-    <div><label>{tr("end")}</label><input name="school_end" value="{get_setting("school_end")}"></div></div>
-    <label>{tr("late_after")}</label><input name="late_after" value="{get_setting("late_after")}">
-    <button class="btn btn-primary" type="submit">{tr("save")}</button></form>
-    <p class="muted">{tr("gate_tip")}</p></div>
+    <button class="btn btn-primary" type="submit">{tr("save")}</button></form></div>
     <div class="card"><h2>{tr("add_user")}</h2><form method="post"><input type="hidden" name="action" value="add_user">
-    <label>{tr("name")}</label><input name="name" required><label>{tr("pin")}</label><input name="pin" required inputmode="numeric">
-    <label>{tr("role")}</label><select name="role"><option>student</option><option>teacher</option><option>staff</option><option>admin</option></select>
+    <label>{tr("name")}</label><input name="name" required>
+    <label>{tr("pin")}</label><input name="pin" required inputmode="numeric">
+    <label>{tr("role")}</label><select name="role">{role_opts}</select>
     <label>{tr("class_group")}</label><input name="class_group" placeholder="3A">
-    <button class="btn btn-primary" type="submit">{tr("add_user")}</button></form></div>
+    <button class="btn btn-primary" type="submit">{tr("add_user")}</button></form>
+    <p class="muted">Roles: student, teacher, staff, busdriver, host, admin, appdev</p></div>
     <div class="card"><h2>{tr("users")}</h2><table><tr><th>{tr("name")}</th><th>{tr("role")}</th><th>{tr("active")}</th><th></th></tr>{urows}</table></div>
-    <div class="card"><h2>{tr("actions")}</h2>
-    <form method="post" onsubmit="return confirm('OK?')"><input type="hidden" name="action" value="force_out">
+    <div class="card"><form method="post" onsubmit="return confirm('OK?')"><input type="hidden" name="action" value="force_out">
     <button class="btn btn-out" type="submit">{tr("force_out")}</button></form>
     <a class="btn btn-primary" href="{url_for("export_csv")}">{tr("export")}</a></div>'''
 
@@ -418,11 +394,11 @@ def admin_body():
 @login_required
 @admin_required
 def export_csv():
-    rows=get_db().execute("SELECT e.created_at,u.name,u.role,e.event_type,e.is_late,e.note,e.lat,e.lng FROM events e JOIN users u ON u.id=e.user_id ORDER BY e.id").fetchall()
+    rows=get_db().execute("SELECT e.created_at,u.name,u.role,e.event_type,e.is_late,e.note FROM events e JOIN users u ON u.id=e.user_id ORDER BY e.id").fetchall()
     buf=io.StringIO(); w=csv.writer(buf)
-    w.writerow(["time","name","role","event","late","note","lat","lng"])
-    for r in rows: w.writerow([r["created_at"],r["name"],r["role"],r["event_type"],r["is_late"],r["note"],r["lat"],r["lng"]])
-    return Response(buf.getvalue(), mimetype="text/csv", headers={"Content-Disposition":"attachment; filename=campus_events.csv"})
+    w.writerow(["time","name","role","event","late","note"])
+    for r in rows: w.writerow([r["created_at"],r["name"],r["role"],r["event_type"],r["is_late"],r["note"]])
+    return Response(buf.getvalue(), mimetype="text/csv", headers={"Content-Disposition":"attachment; filename=campus.csv"})
 
 register_extra(app, {
     "page": page, "tr": tr, "get_db": get_db,
@@ -430,10 +406,13 @@ register_extra(app, {
     "admin_required": admin_required, "current_status": current_status,
     "is_late_now": is_late_now,
 })
+register_channels(app, {
+    "page": page, "tr": tr, "get_db": get_db,
+    "login_required": login_required,
+})
 
 if __name__=="__main__":
     init_db()
-    print("Rowad Nahda Private - Tiznit | FR/AR/EN + extra")
-    print("http://localhost:5050")
-    print("New: /absent /manual /announce /week")
+    print("Rowad Nahda - channels + roles")
+    print("http://localhost:5050  /channels")
     app.run(host="0.0.0.0", port=5050, debug=True)
