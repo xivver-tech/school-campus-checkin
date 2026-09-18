@@ -1,25 +1,16 @@
 """
-Class channels for Rowad Nahda Campus.
-- Teacher owns multiple class channels (e.g. 8 classes, 900+ students total)
-- Students only see channels they belong to (not whole-school feed)
-- Posts: homework, after-hours exercises, class notices
+Class channels — RBAC enforced.
+Students only see channels they belong to.
+Teachers post only to their own classes.
 """
 from datetime import datetime
 from flask import request, session, redirect, url_for
+from rbac import require, has_perm, current_role
 
-# Expanded roles used across the app
 ROLES = (
-    "student",
-    "teacher",
-    "staff",
-    "busdriver",
-    "admin",
-    "host",
-    "appdev",
+    "student", "teacher", "staff", "busdriver", "admin", "host", "appdev",
 )
-
-STAFF_ROLES = ("admin", "teacher", "staff", "host", "appdev")  # can see campus tools
-TEACHER_LIKE = ("admin", "teacher")  # can create class channels & post
+TEACHER_LIKE = ("admin", "teacher", "appdev")
 
 def register_channels(app, helpers):
     page = helpers["page"]
@@ -60,19 +51,17 @@ def register_channels(app, helpers):
 
     def my_channels(uid, role):
         db = get_db()
-        if role in TEACHER_LIKE:
-            # Teachers: channels they own + admin sees all
-            if role == "admin":
-                return db.execute(
-                    "SELECT c.*, u.name as teacher_name FROM class_channels c "
-                    "JOIN users u ON u.id=c.teacher_id WHERE c.active=1 ORDER BY c.name"
-                ).fetchall()
+        if has_perm("channel.create") and role in ("admin", "appdev"):
+            return db.execute(
+                "SELECT c.*, u.name as teacher_name FROM class_channels c "
+                "JOIN users u ON u.id=c.teacher_id WHERE c.active=1 ORDER BY c.name"
+            ).fetchall()
+        if has_perm("channel.create"):
             return db.execute(
                 "SELECT c.*, u.name as teacher_name FROM class_channels c "
                 "JOIN users u ON u.id=c.teacher_id WHERE c.active=1 AND c.teacher_id=? ORDER BY c.name",
                 (uid,),
             ).fetchall()
-        # Students & others: only channels they are members of
         return db.execute(
             "SELECT c.*, u.name as teacher_name FROM class_channels c "
             "JOIN channel_members m ON m.channel_id=c.id "
@@ -82,15 +71,15 @@ def register_channels(app, helpers):
         ).fetchall()
 
     def can_post(channel_id, uid, role):
-        if role == "admin":
+        if has_perm("channel.post") and role in ("admin", "appdev"):
             return True
         row = get_db().execute(
             "SELECT teacher_id FROM class_channels WHERE id=? AND active=1", (channel_id,)
         ).fetchone()
-        return row and row["teacher_id"] == uid
+        return bool(row and row["teacher_id"] == uid and has_perm("channel.post"))
 
     def is_member_or_owner(channel_id, uid, role):
-        if role == "admin":
+        if role in ("admin", "appdev"):
             return True
         db = get_db()
         ch = db.execute("SELECT teacher_id FROM class_channels WHERE id=?", (channel_id,)).fetchone()
@@ -110,6 +99,7 @@ def register_channels(app, helpers):
 
     @app.route("/channels")
     @login_required
+    @require("channel.read")
     def channels_list():
         uid, role = session["user_id"], session.get("role")
         chans = my_channels(uid, role)
@@ -121,31 +111,30 @@ def register_channels(app, helpers):
             cards += f"""
             <a class="card" href="{url_for('channel_view', cid=c['id'])}" style="display:block;text-decoration:none;color:inherit">
               <h2 style="margin:0">{c['name']}</h2>
-              <p class="muted">{c['teacher_name']} · {n} {tr('students') if False else 'students'}</p>
+              <p class="muted">{c['teacher_name']} · {n} students</p>
               <p class="muted">{c['description'] or ''}</p>
             </a>"""
         create = ""
-        if role in TEACHER_LIKE:
+        if has_perm("channel.create"):
             create = f"""
             <div class="card">
-              <h2>{tr('new_channel') if False else 'New class channel'}</h2>
+              <h2>New class channel</h2>
               <form method="post" action="{url_for('channel_create')}">
                 <label>Name (e.g. 3A Maths)</label>
                 <input name="name" required placeholder="3A">
                 <label>Description</label>
-                <input name="description" placeholder="After-hours exercises, homework...">
+                <input name="description" placeholder="Homework, exercises...">
                 <button class="btn btn-primary" type="submit">Create</button>
               </form>
             </div>"""
-        body = create + f"<h2>Class channels</h2>" + (cards or f"<p class='muted'>{tr('none')}</p>")
-        body += f"""<p class="muted" style="margin-top:1rem">Students only see their class channels — not the whole school.</p>"""
+        body = create + "<h2>Class channels</h2>" + (cards or f"<p class='muted'>{tr('none')}</p>")
+        body += "<p class='muted' style='margin-top:1rem'>Students only see their class channels.</p>"
         return page("Channels", body)
 
     @app.route("/channels/create", methods=["POST"])
     @login_required
+    @require("channel.create")
     def channel_create():
-        if session.get("role") not in TEACHER_LIKE:
-            return "Forbidden", 403
         name = (request.form.get("name") or "").strip()[:80]
         desc = (request.form.get("description") or "").strip()[:200]
         if name:
@@ -158,6 +147,7 @@ def register_channels(app, helpers):
 
     @app.route("/channels/<int:cid>", methods=["GET", "POST"])
     @login_required
+    @require("channel.read")
     def channel_view(cid):
         uid, role = session["user_id"], session.get("role")
         if not is_member_or_owner(cid, uid, role):
@@ -170,7 +160,6 @@ def register_channels(app, helpers):
         if not ch:
             return "Not found", 404
 
-        # Post message (teacher/admin only)
         if request.method == "POST" and can_post(cid, uid, role):
             body_txt = (request.form.get("body") or "").strip()[:1000]
             if body_txt:
@@ -199,16 +188,15 @@ def register_channels(app, helpers):
         if can_post(cid, uid, role):
             post_form = f"""
             <div class="card">
-              <h2>Post to class (homework / exercises)</h2>
+              <h2>Post to class</h2>
               <form method="post">
-                <textarea name="body" required placeholder="After-hours exercise, homework..."></textarea>
+                <textarea name="body" required placeholder="Homework, after-hours exercises..."></textarea>
                 <button class="btn btn-primary" type="submit">Post</button>
               </form>
             </div>"""
 
         manage = ""
-        if can_post(cid, uid, role):
-            # Add student by name
+        if can_post(cid, uid, role) and has_perm("channel.members"):
             students = db.execute(
                 "SELECT id, name FROM users WHERE active=1 AND role='student' ORDER BY name"
             ).fetchall()
@@ -240,6 +228,7 @@ def register_channels(app, helpers):
 
     @app.route("/channels/<int:cid>/add", methods=["POST"])
     @login_required
+    @require("channel.members")
     def channel_add_member(cid):
         uid, role = session["user_id"], session.get("role")
         if not can_post(cid, uid, role):
