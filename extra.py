@@ -1,16 +1,13 @@
-"""Extra features for campus check-in: absents, manual pointage, announcements, week report."""
+"""Extra features with RBAC enforcement."""
 from datetime import datetime, date, timedelta
-from flask import request, session, redirect, url_for, render_template_string
+from flask import request, session, redirect, url_for
+from rbac import require, has_perm
 
 def register_extra(app, helpers):
-    """helpers must provide: page, tr, get_db, login_required, staff_required,
-    admin_required, current_status, is_late_now, hash_pin (optional)"""
     page = helpers["page"]
     tr = helpers["tr"]
     get_db = helpers["get_db"]
     login_required = helpers["login_required"]
-    staff_required = helpers["staff_required"]
-    admin_required = helpers["admin_required"]
     current_status = helpers["current_status"]
     is_late_now = helpers["is_late_now"]
 
@@ -43,7 +40,7 @@ def register_extra(app, helpers):
 
     @app.route("/absent")
     @login_required
-    @staff_required
+    @require("report.view")
     def absent_today():
         today = date.today().isoformat()
         db = get_db()
@@ -77,11 +74,11 @@ def register_extra(app, helpers):
 
     @app.route("/manual", methods=["GET", "POST"])
     @login_required
-    @staff_required
+    @require("checkin.manual")
     def manual_check():
         db = get_db()
         students = db.execute(
-            "SELECT id, name, COALESCE(class_group,'') as class_group FROM users WHERE active=1 AND role IN ('student','staff') ORDER BY name"
+            "SELECT id, name, COALESCE(class_group,'') as class_group FROM users WHERE active=1 AND role IN ('student','staff','busdriver') ORDER BY name"
         ).fetchall()
         msg = None
         if request.method == "POST":
@@ -138,10 +135,13 @@ def register_extra(app, helpers):
 
     @app.route("/announce", methods=["GET", "POST"])
     @login_required
+    @require("announce.read")
     def announce():
         db = get_db()
         ensure_tables()
-        if request.method == "POST" and session.get("role") in ("admin", "teacher"):
+        if request.method == "POST":
+            if not has_perm("announce.post"):
+                return "Cannot post announcements", 403
             msg = (request.form.get("message") or "").strip()
             if msg:
                 db.execute(
@@ -158,7 +158,7 @@ def register_extra(app, helpers):
             for r in rows
         )
         form = ""
-        if session.get("role") in ("admin", "teacher"):
+        if has_perm("announce.post"):
             form = f"""
             <div class="card">
               <h2>{tr('post_announce')}</h2>
@@ -174,16 +174,15 @@ def register_extra(app, helpers):
 
     @app.route("/week")
     @login_required
-    @staff_required
+    @require("report.view")
     def week_report():
         today = date.today()
-        start = today - timedelta(days=today.weekday())  # Monday
+        start = today - timedelta(days=today.weekday())
         days = [(start + timedelta(days=i)).isoformat() for i in range(7)]
         db = get_db()
         students = db.execute(
             "SELECT id, name, COALESCE(class_group,'') as class_group FROM users WHERE active=1 AND role='student' ORDER BY name"
         ).fetchall()
-        # map user -> set of days with check-in
         present = {}
         for d in days:
             for r in db.execute(
