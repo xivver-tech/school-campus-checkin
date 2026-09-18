@@ -1,0 +1,6 @@
+After pull, ensure extra.py and i18n.py are next to app.py.
+New routes when extra is registered:
+  /absent  - students not checked in today
+  /manual  - teacher points a student in/out
+  /announce - school announcements
+  /week    - weekly attendance grid
