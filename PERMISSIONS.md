@@ -1,47 +1,24 @@
-# Role-Based Access Control (RBAC)
+# RBAC + Institution Lock
 
-File: `rbac.py`
+## School lock (anti-clone)
+**GPS coordinates, radius, school name, and hours are LOCKED** to:
 
-## Roles
-`student` · `teacher` · `staff` · `busdriver` · `host` · `admin` · `appdev`
+- **Rowad Nahda Private - Tiznit**
+- Lat `29.6974` · Lng `-9.7316` · Radius `200 m`
+- Hours `08:00–16:00` · Late after `08:15`
 
-`admin` and `appdev` have **all** permissions.
+| Who | Can change location / hours? |
+|-----|------------------------------|
+| student, teacher, staff, busdriver, host | No |
+| **admin** | No (fields read-only) |
+| **appdev** | **Yes** only |
 
-## Permission matrix
+Files: `school_lock.py` · permission `admin.school_lock`
 
-| Permission | student | teacher | staff | busdriver | host | admin/appdev |
-|------------|:-------:|:-------:|:-----:|:---------:|:----:|:------------:|
-| checkin.self | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| history.self | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| history.all | | ✓ | ✓ | | ✓ | ✓ |
-| campus.board | | ✓ | ✓ | | ✓ | ✓ |
-| report.view | | ✓ | ✓ | | ✓ | ✓ |
-| checkin.manual | | ✓ | ✓ | | ✓ | ✓ |
-| announce.read | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| announce.post | | ✓ | ✓ | | ✓ | ✓ |
-| channel.read | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| channel.create | | ✓ | | | | ✓ |
-| channel.post | | ✓* | | | | ✓ |
-| channel.members | | ✓* | | | | ✓ |
-| admin.* | | | | | | ✓ |
+Geofence check-in always uses the locked coordinates — even if someone edits the DB.
 
-\* Teacher can only post / manage members on **channels they own**. Students only **see channels they are members of**.
+## Demo AppDev
+- Name: `AppDev` · PIN: `9999` · role: `appdev`
 
-## Usage in code
-```python
-from rbac import require, has_perm
-
-@app.route("/absent")
-@login_required
-@require("report.view")
-def absent_today():
-    ...
-
-if has_perm("announce.post"):
-    # show post form
-```
-
-## Decorators
-- `@require("perm")` — need this permission
-- `@require_any("a", "b")` — need one of them
-- `@require_role("teacher", "admin")` — need one of these roles
+## Roles & permissions
+See `rbac.py`. Admin can manage users/export/force-out but **cannot** re-point the app to another school.
