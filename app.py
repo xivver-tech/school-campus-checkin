@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""School Campus Check-In — mobile PWA + expanded features"""
+"""School Campus Check-In — Rowad Nahda Private (Tiznit) base"""
 import csv, hashlib, io, math, sqlite3, secrets
 from datetime import datetime, date, time as dtime
 from functools import wraps
@@ -9,8 +9,19 @@ from flask import Flask, request, session, redirect, url_for, render_template_st
 app = Flask(__name__, static_folder="static")
 app.secret_key = secrets.token_hex(32)
 DB_PATH = Path(__file__).parent / "campus.db"
-DEFAULTS = {"school_name": "Demo High School", "school_lat": "40.7128", "school_lng": "-74.0060",
-            "school_radius_m": "150", "school_start": "08:00", "school_end": "15:30", "late_after": "08:15"}
+
+# Base config: Rowad Nahda Private — Tiznit, Morocco
+# Timezone: Africa/Casablanca (Morocco)
+# GPS center = Tiznit city approx — change in Admin to exact school gate
+DEFAULTS = {
+    "school_name": "Rowad Nahda Private — Tiznit",
+    "school_lat": "29.6974",
+    "school_lng": "-9.7316",
+    "school_radius_m": "200",
+    "school_start": "08:00",
+    "school_end": "16:00",
+    "late_after": "08:15",
+}
 
 def get_db():
     if "db" not in g:
@@ -38,10 +49,17 @@ def init_db():
     except sqlite3.OperationalError: db.execute("ALTER TABLE events ADD COLUMN is_late INTEGER DEFAULT 0")
     for k,v in DEFAULTS.items():
         db.execute("INSERT OR IGNORE INTO settings (key,value) VALUES (?,?)", (k,v))
+    # Always refresh school identity on startup for this base deploy
+    for k,v in DEFAULTS.items():
+        db.execute("INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)", (k,v))
     if db.execute("SELECT COUNT(*) FROM users").fetchone()[0]==0:
         now = datetime.now().isoformat(timespec="seconds")
-        for name,pin,role in [("Admin","0000","admin"),("Ms. Rivera","1234","teacher"),
-                              ("Alex Student","1111","student"),("Sam Staff","2222","staff")]:
+        for name,pin,role in [
+            ("Admin","0000","admin"),
+            ("Teacher Demo","1234","teacher"),
+            ("Student Demo","1111","student"),
+            ("Staff Demo","2222","staff"),
+        ]:
             db.execute("INSERT INTO users (name,pin_hash,role,created_at) VALUES (?,?,?,?)",
                        (name, hash_pin(pin), role, now))
     db.commit(); db.close()
@@ -107,7 +125,7 @@ BASE='''<!DOCTYPE html><html lang="en"><head>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;padding-bottom:calc(72px + var(--safe))}
 header{position:sticky;top:0;z-index:20;background:rgba(30,41,59,.95);padding:.75rem 1rem;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center}
-.brand{font-weight:700}.wrap{max-width:560px;margin:0 auto;padding:1rem}
+.brand{font-weight:700;font-size:.9rem}.wrap{max-width:560px;margin:0 auto;padding:1rem}
 .card{background:var(--card);border-radius:16px;padding:1.15rem;margin-bottom:.9rem;border:1px solid #334155}
 h1{font-size:1.35rem;margin-bottom:.35rem}h2{font-size:1.05rem;margin-bottom:.7rem;color:var(--accent)}
 .muted{color:var(--muted);font-size:.88rem}label{display:block;margin:.55rem 0 .25rem;font-size:.82rem;color:var(--muted)}
@@ -166,11 +184,11 @@ def index():
 @app.route("/login", methods=["GET","POST"])
 def login():
     form='''<div class="card" style="margin-top:1.5rem"><h1>Campus Login</h1>
-    <p class="muted">Works on phone · Add to Home Screen</p>
+    <p class="muted">Rowad Nahda Private · Tiznit · phone ready</p>
     <form method="post"><label>Name</label><input name="name" required autofocus>
     <label>PIN</label><input name="pin" type="password" required inputmode="numeric">
     <button class="btn btn-primary" type="submit">Login</button></form>
-    <p class="muted" style="margin-top:1rem;font-size:.78rem">Demo: Admin/0000 · Ms. Rivera/1234 · Alex Student/1111 · Sam Staff/2222</p></div>'''
+    <p class="muted" style="margin-top:1rem;font-size:.78rem">Demo: Admin/0000 · Teacher Demo/1234 · Student Demo/1111 · Staff Demo/2222</p></div>'''
     if request.method=="POST":
         name=request.form.get("name","").strip(); pin=request.form.get("pin","").strip()
         row=get_db().execute("SELECT * FROM users WHERE name=? AND active=1",(name,)).fetchone()
@@ -355,7 +373,8 @@ def admin_body():
     <div class="grid2"><div><label>Start</label><input name="school_start" value="{get_setting("school_start")}"></div>
     <div><label>End</label><input name="school_end" value="{get_setting("school_end")}"></div></div>
     <label>Late after</label><input name="late_after" value="{get_setting("late_after")}">
-    <button class="btn btn-primary" type="submit">Save</button></form></div>
+    <button class="btn btn-primary" type="submit">Save</button></form>
+    <p class="muted" style="margin-top:.5rem">Tip: set lat/lng to the school gate on Google Maps for accurate GPS.</p></div>
     <div class="card"><h2>Add user</h2><form method="post"><input type="hidden" name="action" value="add_user">
     <label>Name</label><input name="name" required><label>PIN</label><input name="pin" required inputmode="numeric">
     <label>Role</label><select name="role"><option>student</option><option>teacher</option><option>staff</option><option>admin</option></select>
@@ -378,7 +397,8 @@ def export_csv():
 
 if __name__=="__main__":
     init_db()
-    print("Campus Check-In (phone-ready) → http://localhost:5050")
-    print("On phone: http://YOUR-LAN-IP:5050 → Add to Home Screen")
-    print("Demo: Admin/0000 · Ms. Rivera/1234 · Alex Student/1111")
+    print("Rowad Nahda Private — Tiznit · Campus Check-In")
+    print("http://localhost:5050")
+    print("Phone: http://YOUR-PC-IP:5050  → Add to Home Screen")
+    print("Demo: Admin/0000 · Teacher Demo/1234 · Student Demo/1111")
     app.run(host="0.0.0.0", port=5050, debug=True)
