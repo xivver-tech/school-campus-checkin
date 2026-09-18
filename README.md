@@ -1,47 +1,37 @@
-# School Campus Check-In (Phone-ready)
+# Rowad Nahda Private — Tiznit · Campus Check-In
 
-Full school entry/exit system — optimized for **phones** as a installable web app.
+Base app for **Rowad Nahda Private School (Tiznit, Morocco)**.
 
-## Phone setup
-1. Run the server on a computer on the same Wi‑Fi:
-   ```bash
-   pip install -r requirements.txt
-   python app.py
-   ```
-2. On your phone open `http://YOUR-COMPUTER-IP:5050`
-3. Browser menu → **Add to Home Screen** (PWA)
-4. Allow **location** when checking in
-
-GPS needs localhost or HTTPS in most browsers. On a local network, many phones still allow GPS for local IPs.
-
-## New / expanded features
-| Feature | Details |
+## Pre-configured
+| Setting | Value |
 |--------|--------|
-| **Mobile UI** | Large buttons, bottom nav, safe-area padding |
-| **PWA** | Manifest + icon + “Add to Home Screen” |
-| **Live GPS** | Continuous watch + refresh button |
-| **Notes** | Optional note on each check-in/out |
-| **Late detection** | Marks LATE if check-in after configured time |
-| **School hours** | Start / end / late-after in Admin |
-| **Campus board** | Who’s in/out + auto-refresh every 30s |
-| **Daily report** | Today’s check-ins + late count |
-| **Force checkout** | End-of-day mass checkout (admin) |
-| **CSV export** | Full event log |
+| School | Rowad Nahda Private — Tiznit |
+| GPS (city center) | 29.6974, -9.7316 |
+| Radius | 200 m (change to exact gate later) |
+| Hours | 08:00 – 16:00 |
+| Late after | 08:15 |
+| Timezone | Africa/Casablanca (device local time) |
+
+## Run
+```bash
+pip install -r requirements.txt
+python app.py
+```
+- PC: http://localhost:5050  
+- Phone (same Wi‑Fi): http://YOUR-PC-IP:5050 → **Add to Home Screen**
 
 ## Demo logins
 | Name | PIN | Role |
 |------|-----|------|
 | Admin | 0000 | admin |
-| Ms. Rivera | 1234 | teacher |
-| Alex Student | 1111 | student |
-| Sam Staff | 2222 | staff |
+| Teacher Demo | 1234 | teacher |
+| Student Demo | 1111 | student |
+| Staff Demo | 2222 | staff |
 
-## Admin setup for a real school
-1. Login as Admin → **Admin**
-2. Set school name, lat, lng, radius (meters)
-3. Set start / end / late-after times
-4. Add users with PINs
+## Before real use
+1. Login as **Admin**
+2. Set **exact school gate** lat/lng (Google Maps → right‑click)
+3. Adjust radius if needed (e.g. 80–150 m)
+4. Add real teachers/students with PINs
 
-Coordinates: Google Maps → right-click school → copy lat,lng.
-
-Repo: https://github.com/xivver-tech/school-campus-checkin
+If you like this base, we can continue (Arabic UI, more users, reports, etc.).
