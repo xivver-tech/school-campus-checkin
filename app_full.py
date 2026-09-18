@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""School Campus Check-In - Rowad Nahda Private (Tiznit) - FR/AR/EN + channels + roles"""
+"""School Campus Check-In - RBAC enabled"""
 import csv, hashlib, io, math, sqlite3, secrets
 from datetime import datetime, date, time as dtime
 from functools import wraps
@@ -8,6 +8,7 @@ from flask import Flask, request, session, redirect, url_for, render_template_st
 from i18n import I18N
 from extra import register_extra
 from channels import register_channels
+from rbac import require, has_perm, permissions_for_role, current_role
 
 app = Flask(__name__, static_folder="static")
 app.secret_key = secrets.token_hex(32)
@@ -15,15 +16,9 @@ DB_PATH = Path(__file__).parent / "campus.db"
 
 DEFAULTS = {
     "school_name": "Rowad Nahda Private - Tiznit",
-    "school_lat": "29.6974",
-    "school_lng": "-9.7316",
-    "school_radius_m": "200",
-    "school_start": "08:00",
-    "school_end": "16:00",
-    "late_after": "08:15",
-    "default_lang": "fr",
+    "school_lat": "29.6974", "school_lng": "-9.7316", "school_radius_m": "200",
+    "school_start": "08:00", "school_end": "16:00", "late_after": "08:15", "default_lang": "fr",
 }
-
 ALL_ROLES = ("student", "teacher", "staff", "busdriver", "admin", "host", "appdev")
 
 def tr(key):
@@ -104,27 +99,28 @@ def login_required(f):
 def staff_required(f):
     @wraps(f)
     def w(*a,**k):
-        if session.get("role") not in ("admin","teacher","staff","host","appdev"): return tr("staff_only"),403
+        if "user_id" not in session: return redirect(url_for("login"))
+        if not (has_perm("campus.board") or has_perm("report.view")):
+            return tr("staff_only"), 403
         return f(*a,**k)
     return w
 
 def admin_required(f):
     @wraps(f)
     def w(*a,**k):
-        if session.get("role") not in ("admin","appdev"): return tr("admin_only"),403
+        if "user_id" not in session: return redirect(url_for("login"))
+        if not has_perm("admin.settings"):
+            return tr("admin_only"), 403
         return f(*a,**k)
     return w
 
 BASE='''<!DOCTYPE html><html lang="{{ lang_code|default('fr') }}" dir="{{ 'rtl' if (lang_code|default('fr'))=='ar' else 'ltr' }}"><head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#0f172a">
-<link rel="manifest" href="/static/manifest.json">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0f172a"><link rel="manifest" href="/static/manifest.json">
 <title>{{ title }} - Campus</title>
 <style>
 :root{--bg:#0f172a;--card:#1e293b;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;--safe:env(safe-area-inset-bottom,0px)}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,Tahoma,sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;padding-bottom:calc(72px + var(--safe))}
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,Tahoma,sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;padding-bottom:calc(72px + var(--safe))}
 header{position:sticky;top:0;z-index:20;background:rgba(30,41,59,.95);padding:.75rem 1rem;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap}
 .brand{font-weight:700;font-size:.85rem}.wrap{max-width:560px;margin:0 auto;padding:1rem}
 .card{background:var(--card);border-radius:16px;padding:1.15rem;margin-bottom:.9rem;border:1px solid #334155}
@@ -137,12 +133,10 @@ button,.btn{display:inline-flex;align-items:center;justify-content:center;paddin
 table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:.55rem .3rem;text-align:start;border-bottom:1px solid #334155}th{color:var(--muted)}
 .pill{display:inline-block;padding:.2rem .55rem;border-radius:999px;font-size:.72rem;font-weight:700}
 .pill-in{background:#14532d;color:#86efac}.pill-out{background:#44403c;color:#d6d3d1}.pill-late{background:#7f1d1d;color:#fecaca}
-.error{background:#450a0a;color:#fecaca;padding:.85rem;border-radius:12px;margin-bottom:.9rem}
-.okmsg{background:#14532d;color:#bbf7d0;padding:.85rem;border-radius:12px;margin-bottom:.9rem}
+.error{background:#450a0a;color:#fecaca;padding:.85rem;border-radius:12px;margin-bottom:.9rem}.okmsg{background:#14532d;color:#bbf7d0;padding:.85rem;border-radius:12px;margin-bottom:.9rem}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}.stat{text-align:center;padding:.75rem;background:#0f172a;border-radius:12px}.stat-n{font-size:1.6rem;font-weight:800;color:var(--accent)}
 .bottom-nav{position:fixed;bottom:0;left:0;right:0;z-index:30;background:rgba(30,41,59,.97);border-top:1px solid #334155;display:flex;justify-content:space-around;padding:.4rem .5rem calc(.4rem + var(--safe))}
-.bottom-nav a{flex:1;text-align:center;text-decoration:none;color:var(--muted);font-size:.65rem;padding:.3rem;font-weight:600}
-.bottom-nav .ico{font-size:1.15rem;display:block}
+.bottom-nav a{flex:1;text-align:center;text-decoration:none;color:var(--muted);font-size:.65rem;padding:.3rem;font-weight:600}.bottom-nav .ico{font-size:1.15rem;display:block}
 .loc-bar{display:flex;align-items:center;gap:.5rem;padding:.6rem;background:#0f172a;border-radius:10px;margin:.5rem 0;font-size:.85rem}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}.dot.on{background:var(--ok)}.dot.err{background:var(--bad)}
 .lang a{color:#94a3b8;text-decoration:none;font-size:.75rem;padding:.2rem .45rem;border:1px solid #334155;border-radius:6px;margin-inline-start:.25rem}
@@ -157,8 +151,7 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:.55rem 
 <a href="{{ url_for('history') }}">{{ tr.history }}</a>
 <a href="/channels">Channels</a>
 {% if user.role in ['admin','teacher','staff','host','appdev'] %}
-<a href="{{ url_for('campus_board') }}">{{ tr.campus }}</a>
-<a href="/absent">{{ tr.absent }}</a>
+<a href="{{ url_for('campus_board') }}">{{ tr.campus }}</a><a href="/absent">{{ tr.absent }}</a>
 {% endif %}
 <a href="/announce">{{ tr.announcements }}</a>
 {% if user.role in ['admin','appdev'] %}<a href="{{ url_for('admin') }}">{{ tr.admin }}</a>{% endif %}
@@ -181,8 +174,7 @@ def page(title, body, error=None, msg=None):
     if "user_id" in session:
         user=get_db().execute("SELECT * FROM users WHERE id=?",(session["user_id"],)).fetchone()
     return render_template_string(BASE, title=title, body=body, error=error, msg=msg, user=user,
-        school_name=get_setting("school_name","School"),
-        lang_code=session.get("lang","fr"), tr=TrObj())
+        school_name=get_setting("school_name","School"), lang_code=session.get("lang","fr"), tr=TrObj())
 
 @app.route("/lang/<code>")
 def set_lang(code):
@@ -228,10 +220,9 @@ def dashboard():
         if le["is_late"]: last_line+=f" · <span class='status-late'>{tr('late')}</span>"
         last_line+="</p>"
     st = ('<span class="status-in">'+tr("on_campus")+'</span>') if status=='in' else ('<span class="status-out">'+tr("off_campus")+'</span>')
-    role = session.get("role")
     links = f'''<div class="card"><a class="btn btn-primary" href="/channels">Class channels</a>
     <a class="btn btn-ghost" href="/announce">{tr("announcements")}</a></div>'''
-    if role in ("admin","teacher","staff","host","appdev"):
+    if has_perm("report.view") or has_perm("campus.board"):
         links = f'''<div class="card"><h2>Tools</h2>
         <a class="btn btn-primary" href="/channels">Class channels</a>
         <a class="btn btn-ghost" href="/absent">{tr("absent_today")}</a>
@@ -239,9 +230,8 @@ def dashboard():
         <a class="btn btn-ghost" href="/week">{tr("week_report")}</a>
         <a class="btn btn-ghost" href="/announce">{tr("announcements")}</a></div>'''
     body=f'''<div class="card"><h1>{tr("hi")}, {session.get("name")}</h1>
-    <p class="muted">{role} · {get_setting("school_name")}</p>
-    <p style="margin-top:.85rem">{tr("status")}: {st}</p>{last_line}
-    <p class="muted">{tr("hours")} {get_setting("school_start")}–{get_setting("school_end")}</p></div>
+    <p class="muted">{session.get("role")} · {get_setting("school_name")}</p>
+    <p style="margin-top:.85rem">{tr("status")}: {st}</p>{last_line}</div>
     <div class="card"><h2>{tr("check_title")}</h2>
     <div class="loc-bar"><span class="dot" id="dot"></span><span id="loc-status">{tr("gps_wait")}</span></div>
     <label>{tr("note")}</label><textarea id="note"></textarea>
@@ -254,27 +244,23 @@ def dashboard():
     function setReady(ok,msg){{document.getElementById('dot').className='dot '+(ok?'on':'err');
       document.getElementById('loc-status').textContent=msg;
       document.getElementById('btn-in').disabled=!ok;document.getElementById('btn-out').disabled=!ok;}}
-    function onPos(pos){{lat=pos.coords.latitude;lng=pos.coords.longitude;accuracy=pos.coords.accuracy;
-      setReady(true,'GPS ±'+Math.round(accuracy)+' m');}}
+    function onPos(pos){{lat=pos.coords.latitude;lng=pos.coords.longitude;accuracy=pos.coords.accuracy;setReady(true,'GPS ±'+Math.round(accuracy)+' m');}}
     function onErr(err){{setReady(false,'GPS: '+err.message);}}
-    function refreshLoc(){{setReady(false,'...');
-      navigator.geolocation.getCurrentPosition(onPos,onErr,{{enableHighAccuracy:true,timeout:20000,maximumAge:0}});}}
-    if(!navigator.geolocation)setReady(false,'GPS');
-    else{{refreshLoc();navigator.geolocation.watchPosition(onPos,onErr,{{enableHighAccuracy:true,maximumAge:5000}});}}
+    function refreshLoc(){{setReady(false,'...');navigator.geolocation.getCurrentPosition(onPos,onErr,{{enableHighAccuracy:true,timeout:20000,maximumAge:0}});}}
+    if(!navigator.geolocation)setReady(false,'GPS');else{{refreshLoc();navigator.geolocation.watchPosition(onPos,onErr,{{enableHighAccuracy:true,maximumAge:5000}});}}
     async function doCheck(type){{
       document.getElementById('btn-in').disabled=true;document.getElementById('btn-out').disabled=true;
-      const res=await fetch('/api/check',{{method:'POST',headers:{{'Content-Type':'application/json'}},
-        body:JSON.stringify({{type,lat,lng,accuracy,note:document.getElementById('note').value}})}});
+      const res=await fetch('/api/check',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{type,lat,lng,accuracy,note:document.getElementById('note').value}})}});
       const data=await res.json();
       document.getElementById('result').innerHTML=data.ok?'<span style="color:#86efac">'+data.message+'</span>':'<span style="color:#fca5a5">'+data.message+'</span>';
-      if(data.ok)setTimeout(()=>location.reload(),1100);
-      else{{document.getElementById('btn-in').disabled=false;document.getElementById('btn-out').disabled=false;}}
+      if(data.ok)setTimeout(()=>location.reload(),1100);else{{document.getElementById('btn-in').disabled=false;document.getElementById('btn-out').disabled=false;}}
     }}
     </script>'''
     return page(tr("home"), body)
 
 @app.route("/api/check", methods=["POST"])
 @login_required
+@require("checkin.self")
 def api_check():
     data=request.get_json(force=True,silent=True) or {}
     etype=data.get("type")
@@ -303,8 +289,8 @@ def api_check():
 @app.route("/history")
 @login_required
 def history():
-    role,uid=session.get("role"),session["user_id"]
-    if role in ("admin","teacher","staff","host","appdev"):
+    uid=session["user_id"]
+    if has_perm("history.all"):
         rows=get_db().execute("SELECT e.*,u.name FROM events e JOIN users u ON u.id=e.user_id ORDER BY e.id DESC LIMIT 120").fetchall()
     else:
         rows=get_db().execute("SELECT e.*,u.name FROM events e JOIN users u ON u.id=e.user_id WHERE e.user_id=? ORDER BY e.id DESC LIMIT 60",(uid,)).fetchall()
@@ -318,13 +304,12 @@ def history():
 
 @app.route("/campus")
 @login_required
-@staff_required
+@require("campus.board")
 def campus_board():
     users=get_db().execute("SELECT id,name,role FROM users WHERE active=1 ORDER BY name").fetchall()
     on_c,off_c=[],[]
     for u in users:
-        st=current_status(u["id"])
-        (on_c if st=="in" else off_c).append(u)
+        (on_c if current_status(u["id"])=="in" else off_c).append(u)
     def ul(lst):
         if not lst: return "<p class='muted'>"+tr("none")+"</p>"
         return "<ul style='list-style:none'>"+"".join(f"<li>{x['name']} <span class='muted'>({x['role']})</span></li>" for x in lst)+"</ul>"
@@ -336,7 +321,7 @@ def campus_board():
 
 @app.route("/admin", methods=["GET","POST"])
 @login_required
-@admin_required
+@require("admin.settings")
 def admin():
     db=get_db()
     if request.method=="POST":
@@ -345,7 +330,7 @@ def admin():
             for k in ("school_name","school_lat","school_lng","school_radius_m","school_start","school_end","late_after"):
                 if request.form.get(k) is not None: set_setting(k, request.form.get(k))
             return page(tr("admin"), admin_body(), msg=tr("save"))
-        if action=="add_user":
+        if action=="add_user" and has_perm("admin.users"):
             name,pin,role=request.form.get("name","").strip(),request.form.get("pin","").strip(),request.form.get("role","student")
             cg=request.form.get("class_group","").strip()
             if name and pin and role in ALL_ROLES:
@@ -354,16 +339,18 @@ def admin():
                 except Exception:
                     db.execute("INSERT INTO users (name,pin_hash,role,created_at) VALUES (?,?,?,?)",(name,hash_pin(pin),role,datetime.now().isoformat(timespec="seconds")))
                 db.commit(); return page(tr("admin"), admin_body(), msg=name)
-        if action=="deactivate":
+        if action=="deactivate" and has_perm("admin.users"):
             db.execute("UPDATE users SET active=0 WHERE id=?",(request.form.get("user_id"),)); db.commit()
             return page(tr("admin"), admin_body(), msg=tr("disable"))
-        if action=="force_out":
+        if action=="force_out" and has_perm("admin.force_out"):
             now=datetime.now().isoformat(timespec="seconds"); n=0
             for u in db.execute("SELECT id FROM users WHERE active=1").fetchall():
                 if current_status(u["id"])=="in":
                     db.execute("INSERT INTO events (user_id,event_type,inside_geofence,note,created_at) VALUES (?,?,?,?,?)",(u["id"],"out",1,"force",now)); n+=1
             db.commit(); return page(tr("admin"), admin_body(), msg=str(n))
-    return page(tr("admin"), admin_body())
+    perms = permissions_for_role(current_role())
+    rbac_card = f'<div class="card"><h2>RBAC</h2><p>Role: <strong>{current_role()}</strong></p><p class="muted">{len(perms)} permissions</p><p class="muted" style="font-size:0.75rem">{{", ".join(perms)}</p></div>'
+    return page(tr("admin"), admin_body() + rbac_card)
 
 def admin_body():
     users=get_db().execute("SELECT * FROM users ORDER BY role,name").fetchall()
@@ -379,8 +366,7 @@ def admin_body():
     <label>{tr("radius")}</label><input name="school_radius_m" value="{get_setting("school_radius_m")}">
     <button class="btn btn-primary" type="submit">{tr("save")}</button></form></div>
     <div class="card"><h2>{tr("add_user")}</h2><form method="post"><input type="hidden" name="action" value="add_user">
-    <label>{tr("name")}</label><input name="name" required>
-    <label>{tr("pin")}</label><input name="pin" required inputmode="numeric">
+    <label>{tr("name")}</label><input name="name" required><label>{tr("pin")}</label><input name="pin" required inputmode="numeric">
     <label>{tr("role")}</label><select name="role">{role_opts}</select>
     <label>{tr("class_group")}</label><input name="class_group" placeholder="3A">
     <button class="btn btn-primary" type="submit">{tr("add_user")}</button></form>
@@ -392,7 +378,7 @@ def admin_body():
 
 @app.route("/export.csv")
 @login_required
-@admin_required
+@require("admin.export")
 def export_csv():
     rows=get_db().execute("SELECT e.created_at,u.name,u.role,e.event_type,e.is_late,e.note FROM events e JOIN users u ON u.id=e.user_id ORDER BY e.id").fetchall()
     buf=io.StringIO(); w=csv.writer(buf)
@@ -400,19 +386,13 @@ def export_csv():
     for r in rows: w.writerow([r["created_at"],r["name"],r["role"],r["event_type"],r["is_late"],r["note"]])
     return Response(buf.getvalue(), mimetype="text/csv", headers={"Content-Disposition":"attachment; filename=campus.csv"})
 
-register_extra(app, {
-    "page": page, "tr": tr, "get_db": get_db,
-    "login_required": login_required, "staff_required": staff_required,
-    "admin_required": admin_required, "current_status": current_status,
-    "is_late_now": is_late_now,
-})
-register_channels(app, {
-    "page": page, "tr": tr, "get_db": get_db,
-    "login_required": login_required,
-})
+register_extra(app, {"page": page, "tr": tr, "get_db": get_db, "login_required": login_required,
+    "staff_required": staff_required, "admin_required": admin_required,
+    "current_status": current_status, "is_late_now": is_late_now})
+register_channels(app, {"page": page, "tr": tr, "get_db": get_db, "login_required": login_required})
 
 if __name__=="__main__":
     init_db()
-    print("Rowad Nahda - channels + roles")
-    print("http://localhost:5050  /channels")
+    print("RBAC enabled — see PERMISSIONS.md")
+    print("http://localhost:5050")
     app.run(host="0.0.0.0", port=5050, debug=True)
