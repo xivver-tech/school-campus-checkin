@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""School Campus Check-In - RBAC enabled"""
+"""School Campus Check-In - RBAC + institution lock (Rowad Nahda only)"""
 import csv, hashlib, io, math, sqlite3, secrets
 from datetime import datetime, date, time as dtime
 from functools import wraps
@@ -9,16 +9,14 @@ from i18n import I18N
 from extra import register_extra
 from channels import register_channels
 from rbac import require, has_perm, permissions_for_role, current_role
+from school_lock import LOCKED_SCHOOL, filter_settings_update, is_appdev
 
 app = Flask(__name__, static_folder="static")
 app.secret_key = secrets.token_hex(32)
 DB_PATH = Path(__file__).parent / "campus.db"
 
-DEFAULTS = {
-    "school_name": "Rowad Nahda Private - Tiznit",
-    "school_lat": "29.6974", "school_lng": "-9.7316", "school_radius_m": "200",
-    "school_start": "08:00", "school_end": "16:00", "late_after": "08:15", "default_lang": "fr",
-}
+DEFAULTS = dict(LOCKED_SCHOOL)
+DEFAULTS["default_lang"] = "fr"
 ALL_ROLES = ("student", "teacher", "staff", "busdriver", "admin", "host", "appdev")
 
 def tr(key):
@@ -51,22 +49,32 @@ def init_db():
     except sqlite3.OperationalError: db.execute("ALTER TABLE events ADD COLUMN is_late INTEGER DEFAULT 0")
     try: db.execute("SELECT class_group FROM users LIMIT 1")
     except sqlite3.OperationalError: db.execute("ALTER TABLE users ADD COLUMN class_group TEXT DEFAULT ''")
+    # Always force Rowad Nahda lock on startup (prevents other institutions)
     for k,v in DEFAULTS.items():
+        db.execute("INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)", (k,v))
+    for k,v in LOCKED_SCHOOL.items():
         db.execute("INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)", (k,v))
     if db.execute("SELECT COUNT(*) FROM users").fetchone()[0]==0:
         now = datetime.now().isoformat(timespec="seconds")
         for name,pin,role in [("Admin","0000","admin"),("Teacher Demo","1234","teacher"),
             ("Student Demo","1111","student"),("Staff Demo","2222","staff"),
-            ("Bus Demo","3333","busdriver"),("Host Demo","4444","host")]:
+            ("Bus Demo","3333","busdriver"),("Host Demo","4444","host"),
+            ("AppDev","9999","appdev")]:
             db.execute("INSERT INTO users (name,pin_hash,role,created_at) VALUES (?,?,?,?)",
                        (name, hash_pin(pin), role, now))
     db.commit(); db.close()
 
 def get_setting(key, default=""):
+    # Non-appdev always read locked values for school identity
+    if key in LOCKED_SCHOOL and not is_appdev(session.get("role") if session else ""):
+        return LOCKED_SCHOOL[key]
     row = get_db().execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
-    return row["value"] if row else default
+    return row["value"] if row else (LOCKED_SCHOOL.get(key) or default)
 
 def set_setting(key, value):
+    # Block writes to locked keys unless appdev
+    if key in LOCKED_SCHOOL and not is_appdev(session.get("role") if session else ""):
+        return  # silent refuse
     get_db().execute("INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)", (key, str(value)))
     get_db().commit()
 
@@ -116,8 +124,7 @@ def admin_required(f):
 
 BASE='''<!DOCTYPE html><html lang="{{ lang_code|default('fr') }}" dir="{{ 'rtl' if (lang_code|default('fr'))=='ar' else 'ltr' }}"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#0f172a"><link rel="manifest" href="/static/manifest.json">
-<title>{{ title }} - Campus</title>
+<meta name="theme-color" content="#0f172a"><title>{{ title }} - Campus</title>
 <style>
 :root{--bg:#0f172a;--card:#1e293b;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;--safe:env(safe-area-inset-bottom,0px)}
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,Tahoma,sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;padding-bottom:calc(72px + var(--safe))}
@@ -127,6 +134,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(30,41,59,.95);padding:.7
 h1{font-size:1.3rem}h2{font-size:1.05rem;margin-bottom:.7rem;color:var(--accent)}
 .muted{color:var(--muted);font-size:.88rem}label{display:block;margin:.55rem 0 .25rem;font-size:.82rem;color:var(--muted)}
 input,select,textarea{width:100%;padding:.85rem;border-radius:12px;border:1px solid #334155;background:#0f172a;color:var(--text);font-size:16px}
+input[readonly]{opacity:.7;border-color:#475569}
 button,.btn{display:inline-flex;align-items:center;justify-content:center;padding:1rem;border:none;border-radius:14px;font-weight:700;font-size:1.05rem;cursor:pointer;text-decoration:none;color:#0f172a;width:100%;margin-top:.65rem;min-height:52px}
 .btn-in{background:var(--ok)}.btn-out{background:var(--warn)}.btn-primary{background:var(--accent)}.btn-danger{background:var(--bad);color:#fff}.btn-ghost{background:transparent;border:1px solid #334155;color:var(--text)}.btn:disabled{opacity:.45}
 .status-in{color:var(--ok);font-weight:800}.status-out{color:var(--muted);font-weight:800}.status-late{color:var(--bad);font-weight:700}
@@ -140,6 +148,7 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:.55rem 
 .loc-bar{display:flex;align-items:center;gap:.5rem;padding:.6rem;background:#0f172a;border-radius:10px;margin:.5rem 0;font-size:.85rem}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}.dot.on{background:var(--ok)}.dot.err{background:var(--bad)}
 .lang a{color:#94a3b8;text-decoration:none;font-size:.75rem;padding:.2rem .45rem;border:1px solid #334155;border-radius:6px;margin-inline-start:.25rem}
+.lock-banner{background:#422006;color:#fdba74;padding:.75rem;border-radius:12px;margin-bottom:.9rem;font-size:.85rem}
 @media(min-width:700px){body{padding-bottom:1rem}.bottom-nav{display:none}header nav.desk{display:flex;flex-wrap:wrap}header nav.desk a{color:var(--accent);text-decoration:none;margin-inline-start:.5rem;font-size:.78rem}}
 @media(max-width:699px){header nav.desk{display:none}.grid2{grid-template-columns:1fr}}
 </style></head><body>
@@ -196,7 +205,7 @@ def login():
     <form method="post"><label>{tr("name")}</label><input name="name" required autofocus>
     <label>{tr("pin")}</label><input name="pin" type="password" required inputmode="numeric">
     <button class="btn btn-primary" type="submit">{tr("login_btn")}</button></form>
-    <p class="muted" style="margin-top:1rem;font-size:.75rem">Admin/0000 · Teacher/1234 · Student/1111 · Bus/3333 · Host/4444</p></div>'''
+    <p class="muted" style="margin-top:1rem;font-size:.75rem">Admin/0000 · Teacher/1234 · Student/1111 · AppDev/9999</p></div>'''
     if request.method=="POST":
         name=request.form.get("name","").strip(); pin=request.form.get("pin","").strip()
         row=get_db().execute("SELECT * FROM users WHERE name=? AND active=1",(name,)).fetchone()
@@ -270,8 +279,9 @@ def api_check():
     except (TypeError,ValueError,KeyError):
         return jsonify(ok=False,message=tr("allow_gps")),400
     note=(data.get("note") or "")[:300]
-    dist=haversine_m(lat,lng,float(get_setting("school_lat")),float(get_setting("school_lng")))
-    radius=float(get_setting("school_radius_m"))
+    # Always use locked school coordinates for geofence
+    dist=haversine_m(lat,lng,float(LOCKED_SCHOOL["school_lat"]),float(LOCKED_SCHOOL["school_lng"]))
+    radius=float(LOCKED_SCHOOL["school_radius_m"])
     inside=dist<=radius+max(accuracy,0)
     if etype=="in" and not inside:
         return jsonify(ok=False,message=f"{tr('too_far')} ({int(dist)} m)")
@@ -327,8 +337,16 @@ def admin():
     if request.method=="POST":
         action=request.form.get("action")
         if action=="settings":
-            for k in ("school_name","school_lat","school_lng","school_radius_m","school_start","school_end","late_after"):
-                if request.form.get(k) is not None: set_setting(k, request.form.get(k))
+            raw = {k: request.form.get(k) for k in ("school_name","school_lat","school_lng","school_radius_m","school_start","school_end","late_after") if request.form.get(k) is not None}
+            allowed = filter_settings_update(raw, session.get("role"))
+            for k,v in allowed.items():
+                set_setting(k, v)
+            # Always re-lock if not appdev
+            if not is_appdev(session.get("role")):
+                for k,v in LOCKED_SCHOOL.items():
+                    get_db().execute("INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)", (k,v))
+                get_db().commit()
+                return page(tr("admin"), admin_body(), msg="School location & hours are LOCKED (appdev only)")
             return page(tr("admin"), admin_body(), msg=tr("save"))
         if action=="add_user" and has_perm("admin.users"):
             name,pin,role=request.form.get("name","").strip(),request.form.get("pin","").strip(),request.form.get("role","student")
@@ -348,29 +366,33 @@ def admin():
                 if current_status(u["id"])=="in":
                     db.execute("INSERT INTO events (user_id,event_type,inside_geofence,note,created_at) VALUES (?,?,?,?,?)",(u["id"],"out",1,"force",now)); n+=1
             db.commit(); return page(tr("admin"), admin_body(), msg=str(n))
-    perms = permissions_for_role(current_role())
-    rbac_card = f'<div class="card"><h2>RBAC</h2><p>Role: <strong>{current_role()}</strong></p><p class="muted">{len(perms)} permissions</p><p class="muted" style="font-size:0.75rem">{{", ".join(perms)}</p></div>'
-    return page(tr("admin"), admin_body() + rbac_card)
+    return page(tr("admin"), admin_body())
 
 def admin_body():
+    _ro = "readonly" if not has_perm("admin.school_lock") else ""
+    lock_note = ("Editable (appdev)") if has_perm("admin.school_lock") else (
+        "LOCKED — GPS & hours fixed for Rowad Nahda Private - Tiznit. Only AppDev can change.")
     users=get_db().execute("SELECT * FROM users ORDER BY role,name").fetchall()
     urows="".join(f'''<tr><td>{u["name"]}</td><td>{u["role"]}</td><td>{"yes" if u["active"] else "no"}</td>
     <td><form method="post" style="display:inline"><input type="hidden" name="action" value="deactivate">
     <input type="hidden" name="user_id" value="{u["id"]}">
     <button class="btn btn-danger" style="min-height:36px;padding:.3rem .5rem;font-size:.75rem;width:auto;margin:0" type="submit">{tr("disable")}</button></form></td></tr>''' for u in users)
     role_opts="".join(f'<option value="{r}">{r}</option>' for r in ALL_ROLES)
-    return f'''<div class="card"><h2>{tr("school_hours")}</h2><form method="post"><input type="hidden" name="action" value="settings">
-    <label>{tr("name")}</label><input name="school_name" value="{get_setting("school_name")}">
-    <div class="grid2"><div><label>{tr("lat")}</label><input name="school_lat" value="{get_setting("school_lat")}"></div>
-    <div><label>{tr("lng")}</label><input name="school_lng" value="{get_setting("school_lng")}"></div></div>
-    <label>{tr("radius")}</label><input name="school_radius_m" value="{get_setting("school_radius_m")}">
-    <button class="btn btn-primary" type="submit">{tr("save")}</button></form></div>
+    return f'''<div class="lock-banner">{lock_note}</div>
+    <div class="card"><h2>{tr("school_hours")}</h2><form method="post"><input type="hidden" name="action" value="settings">
+    <label>{tr("name")}</label><input name="school_name" value="{get_setting("school_name")}" {_ro}>
+    <div class="grid2"><div><label>{tr("lat")}</label><input name="school_lat" value="{get_setting("school_lat")}" {_ro}></div>
+    <div><label>{tr("lng")}</label><input name="school_lng" value="{get_setting("school_lng")}" {_ro}></div></div>
+    <label>{tr("radius")}</label><input name="school_radius_m" value="{get_setting("school_radius_m")}" {_ro}>
+    <div class="grid2"><div><label>Start</label><input name="school_start" value="{get_setting("school_start")}" {_ro}></div>
+    <div><label>End</label><input name="school_end" value="{get_setting("school_end")}" {_ro}></div></div>
+    <label>{tr("late_after")}</label><input name="late_after" value="{get_setting("late_after")}" {_ro}>
+    <button class="btn btn-primary" type="submit" {"disabled" if _ro else ""}>{tr("save")}</button></form></div>
     <div class="card"><h2>{tr("add_user")}</h2><form method="post"><input type="hidden" name="action" value="add_user">
     <label>{tr("name")}</label><input name="name" required><label>{tr("pin")}</label><input name="pin" required inputmode="numeric">
     <label>{tr("role")}</label><select name="role">{role_opts}</select>
     <label>{tr("class_group")}</label><input name="class_group" placeholder="3A">
-    <button class="btn btn-primary" type="submit">{tr("add_user")}</button></form>
-    <p class="muted">Roles: student, teacher, staff, busdriver, host, admin, appdev</p></div>
+    <button class="btn btn-primary" type="submit">{tr("add_user")}</button></form></div>
     <div class="card"><h2>{tr("users")}</h2><table><tr><th>{tr("name")}</th><th>{tr("role")}</th><th>{tr("active")}</th><th></th></tr>{urows}</table></div>
     <div class="card"><form method="post" onsubmit="return confirm('OK?')"><input type="hidden" name="action" value="force_out">
     <button class="btn btn-out" type="submit">{tr("force_out")}</button></form>
@@ -393,6 +415,7 @@ register_channels(app, {"page": page, "tr": tr, "get_db": get_db, "login_require
 
 if __name__=="__main__":
     init_db()
-    print("RBAC enabled — see PERMISSIONS.md")
+    print("LOCKED to Rowad Nahda Private - Tiznit")
+    print("Only AppDev/9999 can change GPS & hours")
     print("http://localhost:5050")
     app.run(host="0.0.0.0", port=5050, debug=True)
