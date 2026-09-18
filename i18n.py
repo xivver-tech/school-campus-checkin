@@ -1,5 +1,4 @@
-# Translations for Rowad Nahda Campus Check-In
-# Languages: en, fr, ar
+# Translations FR / AR / EN - Rowad Nahda Campus
 
 I18N = {
 "en": {
@@ -26,6 +25,13 @@ I18N = {
     "already_in": "Already checked in.", "already_out": "Already checked out.",
     "too_far": "Too far", "need": "Need", "allow_gps": "Allow GPS",
     "staff_only": "Staff only", "admin_only": "Admin only", "lang": "Language",
+    "absent": "Absent", "absent_today": "Absent today", "manual_check": "Manual check-in",
+    "check_for": "Check in for student", "do_check_in": "Check in", "do_check_out": "Check out",
+    "announcements": "Announcements", "post_announce": "Post announcement",
+    "message": "Message", "class_group": "Class", "week_report": "Week report",
+    "present_days": "Days present", "reason": "Reason", "reason_none": "—",
+    "reason_medical": "Medical", "reason_transport": "Transport", "reason_family": "Family",
+    "reason_other": "Other", "saved": "Saved", "no_absent": "Everyone checked in",
 },
 "fr": {
     "home": "Accueil", "history": "Historique", "campus": "Campus", "report": "Rapport",
@@ -51,6 +57,13 @@ I18N = {
     "already_in": "Deja entre.", "already_out": "Deja sorti.",
     "too_far": "Trop loin", "need": "Besoin", "allow_gps": "Autorisez le GPS",
     "staff_only": "Personnel uniquement", "admin_only": "Admin uniquement", "lang": "Langue",
+    "absent": "Absent", "absent_today": "Absents aujourd'hui", "manual_check": "Pointage manuel",
+    "check_for": "Pointer un eleve", "do_check_in": "Pointer entree", "do_check_out": "Pointer sortie",
+    "announcements": "Annonces", "post_announce": "Publier une annonce",
+    "message": "Message", "class_group": "Classe", "week_report": "Rapport semaine",
+    "present_days": "Jours presents", "reason": "Motif", "reason_none": "—",
+    "reason_medical": "Medical", "reason_transport": "Transport", "reason_family": "Famille",
+    "reason_other": "Autre", "saved": "Enregistre", "no_absent": "Tous sont presents",
 },
 "ar": {
     "home": "الرئيسية", "history": "السجل", "campus": "الحرم", "report": "تقرير",
@@ -76,5 +89,12 @@ I18N = {
     "already_in": "مسجل دخول مسبقاً.", "already_out": "مسجل خروج مسبقاً.",
     "too_far": "بعيد جداً", "need": "يلزم", "allow_gps": "اسمح بالموقع",
     "staff_only": "للموظفين فقط", "admin_only": "للمدير فقط", "lang": "اللغة",
+    "absent": "غائب", "absent_today": "الغائبون اليوم", "manual_check": "تسجيل يدوي",
+    "check_for": "تسجيل تلميذ", "do_check_in": "تسجيل دخول", "do_check_out": "تسجيل خروج",
+    "announcements": "إعلانات", "post_announce": "نشر إعلان",
+    "message": "الرسالة", "class_group": "القسم", "week_report": "تقرير الأسبوع",
+    "present_days": "أيام الحضور", "reason": "السبب", "reason_none": "—",
+    "reason_medical": "طبي", "reason_transport": "نقل", "reason_family": "عائلي",
+    "reason_other": "آخر", "saved": "تم الحفظ", "no_absent": "الجميع حاضر",
 },
 }
