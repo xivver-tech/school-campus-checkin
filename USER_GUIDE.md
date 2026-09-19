@@ -1,188 +1,236 @@
-# User Guide — All Roles
+# دليل المستخدم / Guide utilisateur
 **Rowad Nahda Private — Tiznit** · Campus Check-In
 
-FR · Darija notes included where useful.
+| | |
+|--|--|
+| **Français** | Guide complet |
+| **العربية** | الفصحى |
+| **الدارجة** | المغربية |
 
 ---
 
-## Important limits
+## حدود الصلاحيات · Limites · الحدود
 
-| Role | Who | Limit |
-|------|-----|--------|
-| **host** | Not a person — the **PC that runs the server** (kiosk / office computer) | 1 machine account recommended |
-| **admin** | Real administrators | **Max 3 people** |
-| **appdev** | App developers only | **Max 2 people** |
-
----
-
-## 1. Student · تلميذ
-
-**Français**  
-Compte élève.
-
-**What you can do**
-- Check **IN** / **OUT** with GPS (near school only for IN)
-- See **only your class channels** (not all school)
-- Read school **announcements**
-- Open **Massar** (official notes website)
-- Save your **Code Massar** in the app
-- See your own **history**
-
-**Darija**  
-كيدير الدخول/الخروج بالـ GPS، كيشوف غير قنوات القسم ديالو، كيقرا الإعلانات، كيدخل Massar للنقط.
-
-**You cannot:** admin panel, create channels, see all absents, change school settings.
+| Role | Français | العربية | الدارجة | Limit |
+|------|----------|---------|---------|--------|
+| **host** | PC du serveur (pas une personne) | جهاز السيرفر وليس شخصاً | الكمبيوتر اللي فيه السيرفر، ماشي شخص | 1 PC |
+| **admin** | Administrateurs | المدراء | الأدمن | **max 3** |
+| **appdev** | Développeurs | المطورون | المطورين | **max 2** |
 
 ---
 
-## 2. Teacher · أستاذ
+## 1. Student · Élève · تلميذ · تلميذ
 
-**Français**  
-Enseignant.
+### Français
+Compte **élève**.
+- Pointage **entrée / sortie** avec GPS (près de l’école pour entrer)
+- Voir **seulement ses canaux de classe**
+- Lire les **annonces**
+- Ouvrir **Massar** (notes officielles)
+- Enregistrer son **Code Massar**
+- Voir **son** historique
 
-**What you can do**
-- Everything a student can (check-in, Massar, etc.)
-- **Create class channels** (e.g. 3A, 4B — many classes OK)
-- **Add students** to each channel
-- **Post** homework / exercises (only that class sees it)
-- **Absent today** list
-- **Manual check-in** for a student
-- **Week report**
-- **Campus board** (who is in/out)
-- Post **announcements**
-- See **Code Massar list** of students
+**Interdit :** panneau admin, créer des canaux, liste globale des absents, changer le GPS.
 
-**Darija**  
-كيصاوب قنوات الأقسام، كيزيد التلاميذ، كينشر الفروض، كيشوف الغياب و التقرير.
+### العربية
+حساب **التلميذ**.
+- تسجيل الدخول والخروج عبر GPS
+- رؤية **قنوات قسمه فقط**
+- قراءة الإعلانات
+- فتح **مسار** للنقط الرسمية
+- حفظ رقم مسار
+- سجل الحضور الشخصي فقط
 
-**You cannot:** add/remove admin accounts, change school GPS/hours.
+**ممنوع:** إدارة النظام، إنشاء قنوات، تغيير موقع المدرسة.
 
----
-
-## 3. Staff · موظف
-
-**Français**  
-Personnel de l’école (secrétariat, etc.).
-
-**What you can do**
-- Check-in / out
-- Campus board, absent, manual check, week report
-- Announcements
-- Massar link
-- Read class channels if added as member (usually not needed)
-
-**You cannot:** create class channels, manage all users, change GPS.
+### الدارجة
+التلميذ كيدير **check-in و check-out** بالـ GPS، كيشوف **غير القنوات ديال القسم ديالو**، كيقرا الإعلانات، كيدخل **Massar** باش يشوف النقط. ما يقدرش يدخل للأدمن ولا يصاوب قنوات.
 
 ---
 
-## 4. Bus driver · سائق الحافلة
+## 2. Teacher · Enseignant · أستاذ · أستاذ
 
-**Français**  
-Chauffeur.
+### Français
+**Enseignant** — tout ce que fait l’élève, plus :
+- **Créer** des canaux de classe (ex. 3A, plusieurs classes)
+- **Ajouter** des élèves au canal
+- **Publier** devoirs / exercices (visibles seulement par la classe)
+- Liste **absents du jour**
+- **Pointage manuel**
+- **Rapport de la semaine**
+- **Tableau campus** (qui est dedans / dehors)
+- Publier des **annonces**
+- Liste des **Code Massar** des élèves
 
-**What you can do**
-- **Check IN / OUT** (main use)
-- Own history
-- Massar link if needed
-- Read announcements
+**Interdit :** gérer tous les comptes admin, changer GPS / horaires.
 
-**You cannot:** campus tools, channels admin, user management.
+### العربية
+**الأستاذ** — صلاحيات التلميذ مع:
+- إنشاء قنوات للأقسام
+- إضافة التلاميذ للقناة
+- نشر الواجبات والتمارين (للقسم فقط)
+- قائمة الغائبين
+- تسجيل يدوي
+- تقرير الأسبوع
+- لوحة من في المدرسة
+- الإعلانات وقائمة أرقام مسار
 
-**Darija**  
-أساساً كيسجّل الدخول و الخروج فالتطبيق.
-
----
-
-## 5. Host · جهاز السيرفر (not a person)
-
-**Français**  
-**Ce n’est pas un rôle pour une personne.**  
-C’est le compte du **PC fixe** qui fait tourner le serveur (bureau, guichet, salle des profs).
-
-**Use**
-- Leave this account logged in on the **server computer** if you want a shared screen
-- Or simply don’t use login on that PC — the server runs in the terminal either way
-- Optional: open **Campus board** full screen for the guard desk
-
-**Darija**  
-هاد الدور **ماشي ديال شخص** — هو حساب **الكمبيوتر اللي فيه السيرفر**.
-
-**Recommended:** 1 host account for the machine, PIN known only by IT/admin.
+### الدارجة
+الأستاذ كيصاوب **قناة لكل قسم**، كيزيد التلاميذ، كينشر الفروض، كيشوف **الغياب**، كيدير pointage يدوي، و التقرير الأسبوعي. ما يقدرش يبدّل GPS ديال المدرسة.
 
 ---
 
-## 6. Admin · مدير (max 3 people)
+## 3. Staff · Personnel · موظف · موظف
 
-**Français**  
-Administrateur scolaire. **Maximum 3 personnes.**
+### Français
+**Personnel** (secrétariat, etc.).
+- Pointage GPS
+- Absents, pointage manuel, semaine, tableau campus
+- Annonces, lien Massar
 
-**What you can do**
-- Everything teachers can do
-- **Add / disable users**
-- **Export CSV** (attendance file)
-- **Force out** everyone
-- Open **Admin panel** (`/admin`)
+**Interdit :** créer des canaux de classe, gestion complète des utilisateurs, GPS école.
 
-**What you cannot do**
-- Change **school name, GPS, radius, hours** (LOCKED for Rowad Nahda)
-- Only **AppDev** can unlock those
+### العربية
+**الموظف** — أدوات الحضور والغياب والتقرير، بدون إدارة كاملة للحسابات.
 
-**How to open Admin panel**
-- Computer: menu **Admin**
-- Phone: `http://SERVER-IP:5050/admin`
-
-**Darija**  
-كيزيد المستخدمين، كيوصلّح الحسابات، كيدير export. **ما يقدرش** يبدّل GPS ديال المدرسة.
+### الدارجة
+الموظف كيستعمل أدوات المدرسة (الغياب، pointage يدوي، التقرير). ما كيسيركاش الحسابات بحال الأدمن.
 
 ---
 
-## 7. AppDev · مطور (max 2 people)
+## 4. Bus driver · Chauffeur · سائق الحافلة · سائق الطوبيس
 
-**Français**  
-Développeur technique. **Maximum 2 personnes.**
+### Français
+**Chauffeur de bus**.
+- Surtout **entrée / sortie** GPS
+- Son historique, annonces, Massar si besoin
 
-**What you can do**
-- Everything admin can do
-- **Change school GPS, radius, name, timetable** (only this role)
-- Full technical control
+**Interdit :** outils prof / admin.
 
-**Darija**  
-غير المطور يقدر يبدّل موقع المدرسة و الأوقات فالتطبيق.
+### العربية
+**سائق الحافلة** — تسجيل الحضور أساساً.
 
-Keep PINs secret. Do not give AppDev to normal staff.
-
----
-
-## Quick comparison
-
-| Action | student | teacher | staff | bus | host (PC) | admin (≤3) | appdev (≤2) |
-|--------|:-------:|:-------:|:-----:|:---:|:---------:|:----------:|:-----------:|
-| GPS check-in | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Own class channels | ✓ | ✓ | | | | ✓ | ✓ |
-| Create channels | | ✓ | | | | ✓ | ✓ |
-| Absent / manual / week | | ✓ | ✓ | | ✓* | ✓ | ✓ |
-| Campus board | | ✓ | ✓ | | ✓* | ✓ | ✓ |
-| Add users | | | | | | ✓ | ✓ |
-| Change GPS / hours | | | | | | | ✓ |
-
-\* Host PC account can open these if you use it as a desk display.
+### الدارجة
+سائق الطوبيس كيدير أساساً **الدخول و الخروج** فالتطبيق.
 
 ---
 
-## Daily tips
+## 5. Host · PC serveur · جهاز السيرفر · الكمبيوتر ديال السيرفر
 
-**Teachers**  
-Morning → check Absents → Manual for justified late → post homework in **class channel** only.
+### Français
+**Ce n’est PAS une personne.**  
+C’est le compte du **ordinateur qui fait tourner le serveur** (bureau, guichet).
 
-**Admins**  
-Create accounts at year start → disable leavers → export CSV weekly if needed.
+Utilisation :
+- Compte machine (1 recommandé)
+- Afficher éventuellement le **tableau campus** en grand écran
+- Le serveur tourne avec `python app.py` même sans login
 
-**Everyone**  
-Official grades stay on **Massar** (button in the app).
+### العربية
+**ليس دور شخص.** هو حساب **جهاز الكمبيوتر الذي يشغّل الخادم** في المدرسة.
+
+### الدارجة
+هاد الدور **ماشي ديال بنيادم** — هو حساب **الكمبيوتر اللي فيه السيرفر**. حساب واحد للآلة كافي.
 
 ---
 
-## Demo logins (change before real school use)
+## 6. Admin · Administrateur · مدير · أدمن (max 3)
+
+### Français
+**Administrateur** — **maximum 3 personnes**.
+
+Peut :
+- Tout ce que fait le professeur
+- **Ajouter / désactiver** des utilisateurs
+- **Export CSV**
+- **Forcer la sortie** de tout le monde
+- Ouvrir `/admin`
+
+**Ne peut PAS :** changer nom de l’école, GPS, rayon, horaires (verrouillé).  
+Seul **appdev** le peut.
+
+Accès admin : menu **Admin** ou `http://IP:5050/admin`
+
+### العربية
+**المدير** — **3 أشخاص كحد أقصى**.
+- إدارة المستخدمين والتصدير وإجبار الخروج
+- **لا يمكنه** تغيير موقع GPS أو أوقات المدرسة
+
+### الدارجة
+الأدمن (حتى **3 نفر**) كيزيد المستخدمين و كيدير export. **ما يقدرش** يبدّل GPS أو أوقات المدرسة — غير المطور يقدر.
+
+---
+
+## 7. AppDev · Développeur · مطور · مطور (max 2)
+
+### Français
+**Développeur** — **maximum 2 personnes**.
+- Tous les droits admin
+- **Peut changer** GPS, horaires, nom de l’école
+- Réservé à l’équipe technique
+
+### العربية
+**المطور** — **شخصان كحد أقصى**. وحده يغيّر إعدادات موقع المدرسة والوقت.
+
+### الدارجة
+المطور (حتى **2 نفر**) عندو كلشي + يبدّل **موقع المدرسة و الأوقات**. ما تعطيوش هاد الحساب لأي واحد.
+
+---
+
+## Tableau · جدول الصلاحيات
+
+| Action | student | teacher | staff | bus | host | admin | appdev |
+|--------|:-------:|:-------:|:-----:|:---:|:----:|:-----:|:------:|
+| Check-in GPS | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Canaux de sa classe | ✓ | ✓ | | | | ✓ | ✓ |
+| Créer canaux | | ✓ | | | | ✓ | ✓ |
+| Absents / manuel / semaine | | ✓ | ✓ | | ✓ | ✓ | ✓ |
+| Ajouter utilisateurs | | | | | | ✓ | ✓ |
+| Changer GPS / heures | | | | | | | ✓ |
+
+---
+
+## Connexion · تسجيل الدخول · الدخول
+
+| Français | العربية | الدارجة |
+|----------|---------|---------|
+| Nom = nom complet du compte | الاسم كما سُجّل | الاسم كامل بحال ما عطاوك |
+| PIN = code numérique | الرقم السري | الكود / PIN |
+| FR / AR / EN en haut | غيّر اللغة فوق | بدّل اللغة لفوق |
+
+---
+
+## Installation téléphone · الهاتف
+
+### Français
+1. Un PC à l’école lance le serveur (`python app.py`)
+2. Téléphone sur le **même Wi‑Fi**
+3. Ouvrir `http://IP-DU-PC:5050`
+4. **Android (Chrome)** : Installer l’application / Ajouter à l’écran d’accueil
+5. **iPhone (Safari)** : Partager → Sur l’écran d’accueil
+6. Autoriser la **localisation**
+
+### العربية
+1. تشغيل السيرفر على كمبيوتر المدرسة
+2. الهاتف على نفس الواي فاي
+3. فتح الرابط `http://IP:5050`
+4. أندرويد: تثبيت / إضافة للشاشة الرئيسية
+5. آيفون (سفاري): مشاركة → على الشاشة الرئيسية
+6. السماح بالموقع (GPS)
+
+### الدارجة
+1. الكمبيوتر ديال المدرسة كيشغّل التطبيق
+2. التليفون فنفس الـ Wi‑Fi
+3. دخّل الرابط `http://IP:5050`
+4. أندرويد: Install / زيد للشاشة
+5. آيفون: Share → Add to Home Screen
+6. خلّي الـ GPS يخدم
+
+Détail Windows / Linux : voir **README.md**.
+
+---
+
+## Comptes démo · حسابات تجريبية (غيّرها قبل الاستعمال الحقيقي)
 
 | Name | PIN | Role |
 |------|-----|------|
@@ -196,4 +244,14 @@ Official grades stay on **Massar** (button in the app).
 
 ---
 
-See **README.md** for install on Windows, Linux, Android, iPhone.
+## Massar · مسار
+
+| Français | العربية | الدارجة |
+|----------|---------|---------|
+| Bouton **Go to Massar** ouvre le site officiel | زر مسار يفتح الموقع الرسمي | زر Massar كيفتح الموقع الرسمي |
+| Notes officielles = Massar | النقط الرسمية = مسار | النقط فـ Massar |
+| Cette app = présence GPS + messages de classe | هذا التطبيق = الحضور والرسائل | هاد التطبيق = الحضور و رسائل القسم |
+
+---
+
+*Rowad Nahda Private — Tiznit · Guide FR / عربية / دارجة*
