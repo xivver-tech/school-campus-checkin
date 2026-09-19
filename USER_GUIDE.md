@@ -268,4 +268,4 @@ Le plus important : laisser `python app.py` allumé sur ce PC pendant les heures
 
 ---
 
-*Rowad Nahda Private — Tiznit*
+*Rowad Nahda Privé — Tiznit*
