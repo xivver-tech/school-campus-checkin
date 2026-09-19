@@ -1,23 +1,21 @@
 """
-Massar (MEN Morocco) integration helpers
-=======================================
-Official system: Ministry of National Education.
-We do NOT log into or scrape Massar (no unofficial API).
-
-What this module does:
-- Store each user's Code Massar (رقم مسار)
-- Show role-based links to official portals
-- Students → Moutamadris | Parents hint → Waliye | Teachers → Moudaris info
+Massar link — one-tap open official portal (no login scrape).
+Students → Moutamadris | Teachers → Massar Service
 """
 from flask import request, session, redirect, url_for
 
-# Official MEN portals (public entry points)
-MASSAR_PORTALS = {
-    "service": "https://massarservice.men.gov.ma/",
-    "moutamadris": "https://moutamadris.men.gov.ma/",  # students
-    "waliye": "https://massarservice.men.gov.ma/",     # parents (Waliye space)
-    "info": "https://www.men.gov.ma/",
-}
+# Official portals (open in browser / system browser from the app)
+URL_STUDENT = "https://moutamadris.men.gov.ma/"
+URL_TEACHER = "https://massarservice.men.gov.ma/"
+URL_PARENT = "https://massarservice.men.gov.ma/"
+
+def portal_for_role(role: str) -> tuple:
+    role = (role or "").lower()
+    if role == "student":
+        return URL_STUDENT, "Go to Massar (Moutamadris)", "Notes, absences, timetable"
+    if role in ("teacher", "admin", "appdev", "staff", "host"):
+        return URL_TEACHER, "Go to Massar (enseignants)", "Notes, classes, official absences"
+    return URL_TEACHER, "Go to Massar", "Official MEN portal"
 
 def register_massar(app, helpers):
     page = helpers["page"]
@@ -55,83 +53,96 @@ def register_massar(app, helpers):
 
         if request.method == "POST":
             code = (request.form.get("code_massar") or "").strip()[:20]
-            # Basic format: letter + digits often, keep flexible
             db.execute("UPDATE users SET code_massar=? WHERE id=?", (code, uid))
             db.commit()
             msg = "Code Massar saved"
             user = db.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
 
-        code = (user["code_massar"] if user and "code_massar" in user.keys() else "") or ""
+        code = ""
+        if user:
+            try:
+                code = user["code_massar"] or ""
+            except Exception:
+                code = ""
 
-        # Role-specific guidance
+        url, btn_label, subtitle = portal_for_role(role)
+
+        # Huge one-tap button — opens Massar website (or app if phone handles the URL)
+        go_btn = f"""
+        <div class="card" style="text-align:center;border-color:#38bdf8">
+          <p class="muted" style="margin-bottom:0.5rem">{subtitle}</p>
+          <a class="btn btn-primary" href="{url}" target="_blank" rel="noopener"
+             style="font-size:1.15rem;min-height:56px;background:#0ea5e9">
+            {btn_label} ↗
+          </a>
+          <p class="muted" style="margin-top:0.75rem;font-size:0.8rem">
+            Opens the official Massar site in your browser.<br>
+            Log in with your Code Massar + password from school.
+          </p>
+        </div>
+        """
+
+        extra_links = ""
         if role == "student":
-            portal_title = "Moutamadris (élève)"
-            portal_url = MASSAR_PORTALS["moutamadris"]
-            tips = """
-            <ul class="muted" style="margin:0.5rem 0 0 1.1rem;line-height:1.6">
-              <li>Use your <strong>Code Massar</strong> + password from the school</li>
-              <li>Often login looks like: <code>YOURCODE@taalim.ma</code></li>
-              <li>See notes, absences, timetable on the official site</li>
-            </ul>"""
-        elif role in ("teacher", "admin", "appdev", "staff", "host"):
-            portal_title = "Massar Service / Moudaris (enseignants)"
-            portal_url = MASSAR_PORTALS["service"]
-            tips = """
-            <ul class="muted" style="margin:0.5rem 0 0 1.1rem;line-height:1.6">
-              <li>Teachers enter <strong>notes</strong> and <strong>absences</strong> in official Massar</li>
-              <li>This campus app tracks <strong>GPS check-in</strong> separately</li>
-              <li>You can copy Code Massar from student profiles (admin)</li>
-            </ul>"""
+            extra_links = f"""
+            <a class="btn btn-ghost" href="{URL_STUDENT}" target="_blank" rel="noopener">Moutamadris only</a>
+            """
         else:
-            portal_title = "Massar Service"
-            portal_url = MASSAR_PORTALS["service"]
-            tips = "<p class='muted'>Official MEN school system.</p>"
+            extra_links = f"""
+            <a class="btn btn-ghost" href="{URL_TEACHER}" target="_blank" rel="noopener">Massar Service</a>
+            <a class="btn btn-ghost" href="{URL_STUDENT}" target="_blank" rel="noopener">Moutamadris (élève view)</a>
+            <a class="btn btn-ghost" href="{url_for('massar_student_codes')}">Student Code Massar list</a>
+            """
 
         body = f"""
         <div class="card">
           <h1>Massar · مسار</h1>
-          <p class="muted">Ministry of National Education (official). This app does not replace Massar.</p>
+          <p class="muted">One button → official portal. No need to search Google.</p>
         </div>
 
+        {go_btn}
+
         <div class="card">
-          <h2>Your Code Massar</h2>
+          <h2>Your Code Massar (رقم مسار)</h2>
           <form method="post">
-            <label>رقم مسار / Code Massar</label>
-            <input name="code_massar" value="{code}" placeholder="e.g. A123456789" maxlength="20">
-            <button class="btn btn-primary" type="submit">Save</button>
+            <label>Save it here so you remember</label>
+            <input name="code_massar" value="{code}" placeholder="A123456789" maxlength="20">
+            <button class="btn btn-ghost" type="submit">Save code</button>
           </form>
-          <p class="muted" style="margin-top:0.6rem">Get this code from school administration (الحارس / الإدارة).</p>
+          <p class="muted" style="margin-top:0.5rem">From الإدارة / الحارس العام. Login often: code@taalim.ma</p>
         </div>
 
         <div class="card">
-          <h2>{portal_title}</h2>
-          {tips}
-          <a class="btn btn-primary" href="{portal_url}" target="_blank" rel="noopener">Open official Massar</a>
-          <a class="btn btn-ghost" href="{MASSAR_PORTALS['moutamadris']}" target="_blank" rel="noopener">Moutamadris (students)</a>
+          <h2>More links</h2>
+          {extra_links}
         </div>
 
         <div class="card">
-          <h2>How it connects to this app</h2>
-          <p class="muted" style="line-height:1.55">
-            <strong>This app:</strong> GPS check-in, class channels, campus board.<br>
-            <strong>Massar:</strong> official notes, national absences, exams.<br><br>
-            Teachers: use both — check-in here, grades on Massar.<br>
-            Students: check-in here, notes on Moutamadris.
+          <p class="muted" style="line-height:1.5;font-size:0.85rem">
+            <strong>This campus app</strong> = GPS check-in + class channels.<br>
+            <strong>Massar</strong> = official notes (Ministry).<br>
+            The button only opens Massar — it does not copy your password.
           </p>
         </div>
         """
         return page("Massar", body, msg=msg)
 
+    @app.route("/massar/go")
+    @login_required
+    def massar_go():
+        """Redirect straight to the right Massar portal for this role."""
+        url, _, _ = portal_for_role(session.get("role", ""))
+        return redirect(url)
+
     @app.route("/massar/students")
     @login_required
     def massar_student_codes():
-        """Staff/teachers: list student Code Massar for reference."""
         role = session.get("role")
         if role not in ("teacher", "admin", "appdev", "staff", "host"):
             return "Staff only", 403
         ensure()
         rows = get_db().execute(
-            "SELECT name, role, COALESCE(code_massar,'') as code_massar, COALESCE(class_group,'') as class_group "
+            "SELECT name, COALESCE(code_massar,'') as code_massar, COALESCE(class_group,'') as class_group "
             "FROM users WHERE active=1 AND role='student' ORDER BY name"
         ).fetchall()
         trs = "".join(
@@ -139,15 +150,18 @@ def register_massar(app, helpers):
             f"<td><code>{r['code_massar'] or '—'}</code></td></tr>"
             for r in rows
         )
+        url, btn, _ = portal_for_role("teacher")
         body = f"""
         <div class="card">
-          <h2>Student Code Massar</h2>
-          <p class="muted">For reference when working with official Massar. Codes are entered by each student on /massar.</p>
+          <a class="btn btn-primary" href="{url}" target="_blank" rel="noopener">{btn} ↗</a>
+        </div>
+        <div class="card">
+          <h2>Student codes</h2>
           <table>
             <tr><th>Name</th><th>Class</th><th>Code Massar</th></tr>
-            {trs or '<tr><td colspan="3">No students</td></tr>'}
+            {trs or '<tr><td colspan="3">—</td></tr>'}
           </table>
-          <a class="btn btn-ghost" href="{url_for('massar_hub')}">Back to Massar hub</a>
+          <a class="btn btn-ghost" href="{url_for('massar_hub')}">Back</a>
         </div>
         """
-        return page("Code Massar list", body)
+        return page("Code Massar", body)
