@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""School Campus Check-In - RBAC + institution lock (Rowad Nahda only)"""
+"""School Campus Check-In - RBAC + lock + Massar link"""
 import csv, hashlib, io, math, sqlite3, secrets
 from datetime import datetime, date, time as dtime
 from functools import wraps
@@ -10,6 +10,7 @@ from extra import register_extra
 from channels import register_channels
 from rbac import require, has_perm, permissions_for_role, current_role
 from school_lock import LOCKED_SCHOOL, filter_settings_update, is_appdev
+from massar import register_massar
 
 app = Flask(__name__, static_folder="static")
 app.secret_key = secrets.token_hex(32)
@@ -49,7 +50,6 @@ def init_db():
     except sqlite3.OperationalError: db.execute("ALTER TABLE events ADD COLUMN is_late INTEGER DEFAULT 0")
     try: db.execute("SELECT class_group FROM users LIMIT 1")
     except sqlite3.OperationalError: db.execute("ALTER TABLE users ADD COLUMN class_group TEXT DEFAULT ''")
-    # Always force Rowad Nahda lock on startup (prevents other institutions)
     for k,v in DEFAULTS.items():
         db.execute("INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)", (k,v))
     for k,v in LOCKED_SCHOOL.items():
@@ -65,16 +65,14 @@ def init_db():
     db.commit(); db.close()
 
 def get_setting(key, default=""):
-    # Non-appdev always read locked values for school identity
     if key in LOCKED_SCHOOL and not is_appdev(session.get("role") if session else ""):
         return LOCKED_SCHOOL[key]
     row = get_db().execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
     return row["value"] if row else (LOCKED_SCHOOL.get(key) or default)
 
 def set_setting(key, value):
-    # Block writes to locked keys unless appdev
     if key in LOCKED_SCHOOL and not is_appdev(session.get("role") if session else ""):
-        return  # silent refuse
+        return
     get_db().execute("INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)", (key, str(value)))
     get_db().commit()
 
@@ -159,6 +157,7 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:.55rem 
 <a href="{{ url_for('dashboard') }}">{{ tr.home }}</a>
 <a href="{{ url_for('history') }}">{{ tr.history }}</a>
 <a href="/channels">Channels</a>
+<a href="/massar">Massar</a>
 {% if user.role in ['admin','teacher','staff','host','appdev'] %}
 <a href="{{ url_for('campus_board') }}">{{ tr.campus }}</a><a href="/absent">{{ tr.absent }}</a>
 {% endif %}
@@ -170,7 +169,7 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:.55rem 
 {% if user %}<nav class="bottom-nav">
 <a href="{{ url_for('dashboard') }}"><span class="ico">🏠</span>{{ tr.home }}</a>
 <a href="/channels"><span class="ico">📚</span>Class</a>
-<a href="/announce"><span class="ico">📢</span>{{ tr.announcements }}</a>
+<a href="/massar"><span class="ico">🎓</span>Massar</a>
 <a href="{{ url_for('history') }}"><span class="ico">📋</span>{{ tr.history }}</a>
 </nav>{% endif %}
 </body></html>'''
@@ -230,14 +229,17 @@ def dashboard():
         last_line+="</p>"
     st = ('<span class="status-in">'+tr("on_campus")+'</span>') if status=='in' else ('<span class="status-out">'+tr("off_campus")+'</span>')
     links = f'''<div class="card"><a class="btn btn-primary" href="/channels">Class channels</a>
-    <a class="btn btn-ghost" href="/announce">{tr("announcements")}</a></div>'''
+    <a class="btn btn-ghost" href="/announce">{tr("announcements")}</a>
+    <a class="btn btn-ghost" href="/massar">Massar · مسار</a></div>'''
     if has_perm("report.view") or has_perm("campus.board"):
         links = f'''<div class="card"><h2>Tools</h2>
         <a class="btn btn-primary" href="/channels">Class channels</a>
         <a class="btn btn-ghost" href="/absent">{tr("absent_today")}</a>
         <a class="btn btn-ghost" href="/manual">{tr("manual_check")}</a>
         <a class="btn btn-ghost" href="/week">{tr("week_report")}</a>
-        <a class="btn btn-ghost" href="/announce">{tr("announcements")}</a></div>'''
+        <a class="btn btn-ghost" href="/announce">{tr("announcements")}</a>
+        <a class="btn btn-ghost" href="/massar">Massar · مسار</a>
+        <a class="btn btn-ghost" href="/massar/students">Code Massar list</a></div>'''
     body=f'''<div class="card"><h1>{tr("hi")}, {session.get("name")}</h1>
     <p class="muted">{session.get("role")} · {get_setting("school_name")}</p>
     <p style="margin-top:.85rem">{tr("status")}: {st}</p>{last_line}</div>
@@ -279,7 +281,6 @@ def api_check():
     except (TypeError,ValueError,KeyError):
         return jsonify(ok=False,message=tr("allow_gps")),400
     note=(data.get("note") or "")[:300]
-    # Always use locked school coordinates for geofence
     dist=haversine_m(lat,lng,float(LOCKED_SCHOOL["school_lat"]),float(LOCKED_SCHOOL["school_lng"]))
     radius=float(LOCKED_SCHOOL["school_radius_m"])
     inside=dist<=radius+max(accuracy,0)
@@ -341,7 +342,6 @@ def admin():
             allowed = filter_settings_update(raw, session.get("role"))
             for k,v in allowed.items():
                 set_setting(k, v)
-            # Always re-lock if not appdev
             if not is_appdev(session.get("role")):
                 for k,v in LOCKED_SCHOOL.items():
                     get_db().execute("INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)", (k,v))
@@ -412,10 +412,10 @@ register_extra(app, {"page": page, "tr": tr, "get_db": get_db, "login_required":
     "staff_required": staff_required, "admin_required": admin_required,
     "current_status": current_status, "is_late_now": is_late_now})
 register_channels(app, {"page": page, "tr": tr, "get_db": get_db, "login_required": login_required})
+register_massar(app, {"page": page, "tr": tr, "get_db": get_db, "login_required": login_required})
 
 if __name__=="__main__":
     init_db()
-    print("LOCKED to Rowad Nahda Private - Tiznit")
-    print("Only AppDev/9999 can change GPS & hours")
+    print("Massar linked — /massar")
     print("http://localhost:5050")
     app.run(host="0.0.0.0", port=5050, debug=True)
