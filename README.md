@@ -5,6 +5,11 @@ GPS check-in · class channels · Massar · **FR / العربية / الدارج
 **Guide complet (tous les rôles) :** [USER_GUIDE.md](USER_GUIDE.md)  
 → Français + العربية الفصحى + الدارجة المغربية
 
+**Présentation école (FR, terminée) :** [Presentation_Pointage_Campus_FR.pptx](Presentation_Pointage_Campus_FR.pptx)  
+→ 16 diapositives : problème, solution, fonctionnalités, rôles, GPS, Massar, accès, comptes démo, feuille de route
+
+Voir aussi [PRESENTATION.md](PRESENTATION.md)
+
 ---
 
 ## Rôles / الأدوار / الأدوار
@@ -25,11 +30,13 @@ GPS check-in · class channels · Massar · **FR / العربية / الدارج
 
 ### Linux
 ```bash
-sudo apt install -y python3 python3-pip git
+sudo apt install -y python3 python3-pip python3-venv git
 git clone https://github.com/xivver-tech/school-campus-checkin.git
 cd school-campus-checkin
-python3 -m pip install -r requirements.txt
-python3 app.py
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python app.py
 ```
 
 ### Windows
@@ -74,13 +81,14 @@ Même Wi‑Fi que le PC serveur → ouvrir `http://IP-DU-PC:5050`
 | Host Demo | 4444 | host (PC) |
 | AppDev | 9999 | appdev |
 
-Admin : http://IP:5050/admin
+Admin : http://IP:5050/admin  
+AppDev (contrôle total, GPS / horaires 8–12 et 14–18) : PIN **9999**
 
 ---
 
-```bash
-git clone https://github.com/xivver-tech/school-campus-checkin.git
-cd school-campus-checkin
-python -m pip install -r requirements.txt
-python app.py
-```
+## Horaires école
+
+| Séance | Heures | Retard après |
+|--------|--------|--------------|
+| Matin | 08:00 – 12:00 | 08:15 |
+| Après-midi | 14:00 – 18:00 | 14:15 |
